@@ -165,6 +165,10 @@ async def frame_processor() -> None:
                 "engaged": last_engaged_raw,
                 "detected": eng["detected"],
                 "face_xy": last_face_xy,
+                "face_bbox": eng.get("face_bbox"),
+                "yaw_deg": round(float(eng.get("yaw_deg") or 0.0), 1),
+                "pitch_deg": round(float(eng.get("pitch_deg") or 0.0), 1),
+                "method": eng.get("method"),
                 "fps": round(float(eng.get("fps") or 0.0), 1),
                 "error": eng.get("error"),
             }

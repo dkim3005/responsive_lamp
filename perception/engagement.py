@@ -36,9 +36,11 @@ LANDMARK_IDS = [1, 152, 33, 263, 61, 291]
 class EngagementDetector:
     def __init__(self) -> None:
         self.available = cv2 is not None and mp is not None
+        self.cv_available = cv2 is not None
         self._last_t = time.perf_counter()
         self.fps = 0.0
         self.mesh = None
+        self.face_cascade = None
         self.error: str | None = None
 
     def _ensure_mesh(self) -> bool:
@@ -62,13 +64,13 @@ class EngagementDetector:
     def process(self, bgr: np.ndarray) -> dict:
         self._update_fps()
         if not self._ensure_mesh():
-            return self._empty(self.error)
+            return self._process_haar(bgr, self.error)
 
         h, w = bgr.shape[:2]
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
         results = self.mesh.process(rgb)
         if not results.multi_face_landmarks:
-            return self._empty()
+            return self._process_haar(bgr)
 
         landmarks = results.multi_face_landmarks[0].landmark
         image_points = np.array([(landmarks[i].x * w, landmarks[i].y * h) for i in LANDMARK_IDS], dtype=np.float64)
@@ -98,9 +100,11 @@ class EngagementDetector:
             "yaw_deg": yaw,
             "pitch_deg": pitch,
             "face_xy": [max(-1.0, min(1.0, cx)), max(-1.0, min(1.0, cy))],
+            "face_bbox": [max(0.0, min(xs)), max(0.0, min(ys)), min(1.0, max(xs)), min(1.0, max(ys))],
             "engaged_raw": engaged_raw,
             "fps": self.fps,
             "error": None,
+            "method": "facemesh",
         }
 
     def close(self) -> None:
@@ -113,9 +117,11 @@ class EngagementDetector:
             "yaw_deg": 0.0,
             "pitch_deg": 0.0,
             "face_xy": None,
+            "face_bbox": None,
             "engaged_raw": False,
             "fps": self.fps,
             "error": error,
+            "method": "none",
         }
 
     def _update_fps(self) -> None:
@@ -125,6 +131,32 @@ class EngagementDetector:
         if dt > 0:
             instant = 1.0 / dt
             self.fps = instant if self.fps == 0 else self.fps * 0.85 + instant * 0.15
+
+    def _process_haar(self, bgr: np.ndarray, error: str | None = None) -> dict:
+        if cv2 is None:
+            return self._empty(error or "OpenCV not installed")
+        if self.face_cascade is None:
+            self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+        gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+        faces = self.face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(70, 70))
+        if len(faces) == 0:
+            return self._empty(error)
+        h, w = bgr.shape[:2]
+        x, y, fw, fh = max(faces, key=lambda item: item[2] * item[3])
+        cx = ((x + fw / 2) / w - 0.5) * 2.0
+        cy = ((y + fh / 2) / h - 0.5) * 2.0
+        centered = abs(cx) < 0.45 and abs(cy) < 0.45
+        return {
+            "detected": True,
+            "yaw_deg": cx * 45.0,
+            "pitch_deg": cy * 30.0,
+            "face_xy": [max(-1.0, min(1.0, cx)), max(-1.0, min(1.0, cy))],
+            "face_bbox": [x / w, y / h, (x + fw) / w, (y + fh) / h],
+            "engaged_raw": centered,
+            "fps": self.fps,
+            "error": error,
+            "method": "haar",
+        }
 
 
 def _rotation_matrix_to_euler(r: np.ndarray) -> tuple[float, float, float]:

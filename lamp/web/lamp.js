@@ -32,6 +32,7 @@ let joints = [0, -30, 60, 20, 0, 0];
 let targetJoints = joints.slice();
 let lightTarget = { intensity: 0.5, color: "#ffffff" };
 let lastDetections = [];
+let lastEngagement = null;
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x10100e, 5, 12);
@@ -165,8 +166,12 @@ ws.addEventListener("message", (event) => {
     els.state.textContent = msg.state;
     if (msg.sound === "chirp") chirp();
   } else if (msg.type === "engagement") {
-    els.engagement.textContent = `${msg.engaged ? "engaged" : "away"}${msg.error ? ` (${msg.error})` : ""}`;
+    lastEngagement = msg;
+    const method = msg.method ? `/${msg.method}` : "";
+    const pose = msg.detected ? ` yaw ${msg.yaw_deg} pitch ${msg.pitch_deg}` : "";
+    els.engagement.textContent = `${msg.detected ? (msg.engaged ? "engaged" : "face-away") : "no-face"}${method}${pose}`;
     els.fps.textContent = msg.fps ?? 0;
+    drawDetections(lastDetections);
   } else if (msg.type === "memory_event") {
     const text = `${msg.action} ${msg.label} @ ${msg.zone}`;
     els.memory.textContent = text;
@@ -321,6 +326,25 @@ function drawDetections(items) {
     ctx.fillStyle = "#f6eddd";
     ctx.fillText(label, x + 6, Math.max(0, y - 25));
   }
+  drawFaceOverlay(ctx, canvas);
+}
+
+function drawFaceOverlay(ctx, canvas) {
+  if (!lastEngagement?.face_bbox) return;
+  const [x1, y1, x2, y2] = lastEngagement.face_bbox;
+  const x = (1 - x2) * canvas.width;
+  const y = y1 * canvas.height;
+  const w = (x2 - x1) * canvas.width;
+  const h = (y2 - y1) * canvas.height;
+  const label = `${lastEngagement.engaged ? "ENGAGED" : "FACE"} ${lastEngagement.method || ""}`;
+  ctx.strokeStyle = lastEngagement.engaged ? "#78ff9f" : "#8fb7ff";
+  ctx.fillStyle = "rgba(8, 18, 12, 0.76)";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(x, y, w, h);
+  const textWidth = ctx.measureText(label).width + 12;
+  ctx.fillRect(x, y + h + 4, textWidth, 26);
+  ctx.fillStyle = "#f6eddd";
+  ctx.fillText(label, x + 6, y + h + 7);
 }
 
 function renderDetectionList(items, msg) {
