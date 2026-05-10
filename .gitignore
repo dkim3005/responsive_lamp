@@ -11,5 +11,4 @@ dist/
 build/
 *.mp4
 *.webm
-yolov8n.pt
-
+*.pt

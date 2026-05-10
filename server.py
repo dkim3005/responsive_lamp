@@ -117,6 +117,7 @@ async def handle_text(raw: str, ws: WebSocket) -> None:
         bbox = data.get("bbox") or [0.66, 0.1, 0.92, 0.35]
         zone = zone_for_bbox(bbox)
         action = store.upsert_observation(label, bbox, zone, 0.99, time.time())
+        fsm.trigger_object_found(time.time() - server_start_t, bbox)
         await broadcast({"type": "memory_event", "label": label, "zone": zone, "action": action, "conf": 0.99})
     elif data.get("type") == "manual_observation":
         label = str(data.get("label") or "").strip().lower()
@@ -126,6 +127,7 @@ async def handle_text(raw: str, ws: WebSocket) -> None:
             return
         zone = zone_for_bbox(bbox)
         action = store.upsert_observation(label, bbox, zone, 1.0, time.time())
+        fsm.trigger_object_found(time.time() - server_start_t, bbox)
         await broadcast({"type": "memory_event", "label": label, "bbox": bbox, "zone": zone, "action": action, "conf": 1.0})
     elif data.get("type") == "ping":
         await send_json(ws, {"type": "pong", "ts": time.time()})
@@ -193,13 +195,14 @@ async def frame_processor() -> None:
             )
             for det in detections:
                 action = store.upsert_observation(det["label"], det["bbox"], det["zone"], det["conf"], now)
+                if action == "insert":
+                    fsm.trigger_object_found(time.time() - server_start_t, det["bbox"])
                 await broadcast({"type": "memory_event", **det, "action": action})
 
 
 async def behavior_loop(ws: WebSocket) -> None:
-    t0 = time.time()
     while True:
-        cmd = fsm.tick(time.time() - t0, last_engaged_raw, last_face_xy)
+        cmd = fsm.tick(time.time() - server_start_t, last_engaged_raw, last_face_xy)
         await send_json(ws, {"type": "lamp_state", **cmd})
         await asyncio.sleep(1.0 / LAMP_TICK_HZ)
 

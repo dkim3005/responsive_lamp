@@ -40,13 +40,22 @@ class LampFSM:
         self.disengaged_since: float | None = None
         self.last_seek_level = 0
         self.demo_until = 0.0
+        self.object_until = 0.0
+        self.object_xy: list[float] | None = None
 
     def trigger_demo(self, t: float) -> None:
         self.demo_until = t + 2.5
         self._set_state("DEMO_WAVE", t)
 
+    def trigger_object_found(self, t: float, bbox: list[float]) -> None:
+        x1, y1, x2, y2 = bbox
+        self.object_xy = [((x1 + x2) / 2.0 - 0.5) * 2.0, ((y1 + y2) / 2.0 - 0.5) * 2.0]
+        self.object_until = t + 1.8
+        self._set_state("OBJECT_FOUND", t)
+
     def tick(self, t: float, engaged_raw: bool, face_xy: list[float] | None) -> dict:
-        self._update_hysteresis(t, engaged_raw, face_xy)
+        if self.state not in {"DEMO_WAVE", "OBJECT_FOUND"}:
+            self._update_hysteresis(t, engaged_raw, face_xy)
         elapsed = t - self.state_enter_t
 
         if self.state == "SEEKING_1" and elapsed >= 2.0:
@@ -58,6 +67,9 @@ class LampFSM:
         elif self.state == "DEMO_WAVE" and t >= self.demo_until:
             self._set_state("DISENGAGED", t)
             self.disengaged_since = t
+        elif self.state == "OBJECT_FOUND" and t >= self.object_until:
+            self._set_state("ENGAGED" if engaged_raw else "DISENGAGED", t)
+            self.disengaged_since = None if engaged_raw else t
 
         if self.state == "DISENGAGED" and self.disengaged_since is not None:
             disengaged_for = t - self.disengaged_since
@@ -115,11 +127,15 @@ class LampFSM:
 
         if self.state == "ENGAGED":
             if face_xy:
-                joints[3] = -face_xy[0] * 30.0
-                joints[4] = 20.0 - face_xy[1] * 20.0
+                joints[0] = -face_xy[0] * 18.0
+                joints[3] = -face_xy[0] * 42.0
+                joints[4] = 20.0 - face_xy[1] * 28.0
+                joints[1] = -28.0 - abs(face_xy[0]) * 8.0
             light = {"intensity": 1.0, "color": "#ffd28a"}
         elif self.state == "DISENGAGED":
-            joints[4] = 12.0
+            math = __import__("math")
+            joints[0] = math.sin(t * 0.7) * 5.0
+            joints[4] = 10.0 + math.sin(t * 1.2) * 3.0
             light = {"intensity": 0.4, "color": "#b8c7ff"}
         elif self.state == "SEEKING_1":
             joints = add_joints(joints, head_wiggle(elapsed))
@@ -143,8 +159,20 @@ class LampFSM:
             joints[4] = 18.0 + math.sin(9.0 * elapsed) * 12.0
             light = {"intensity": 1.0, "color": "#ffcc58"}
             sound = "chirp" if elapsed < 0.35 else None
+        elif self.state == "OBJECT_FOUND":
+            math = __import__("math")
+            ox, oy = self.object_xy or [0.0, 0.0]
+            joints[0] = -ox * 24.0
+            joints[1] = -24.0 + math.sin(10.0 * elapsed) * 5.0
+            joints[2] = 54.0 + math.sin(8.0 * elapsed) * 8.0
+            joints[3] = -ox * 48.0
+            joints[4] = 18.0 - oy * 32.0 + math.sin(14.0 * elapsed) * 5.0
+            light = {"intensity": 1.0, "color": "#8fffd2"}
+            sound = "chirp" if elapsed < 0.22 else None
 
-        if self.state not in {"SEEKING_1", "SEEKING_2", "SEEKING_3", "DEMO_WAVE"} and int(t) % 30 in {0, 1}:
-            joints[0] += 6.0
+        if self.state == "IDLE":
+            math = __import__("math")
+            joints[0] = math.sin(t * 0.25) * 8.0
+            joints[4] = 16.0 + math.sin(t * 0.8) * 4.0
 
         return LampCommand(self.state, [round(v, 3) for v in joints], light, sound)
