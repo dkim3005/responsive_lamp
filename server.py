@@ -169,6 +169,9 @@ async def frame_processor() -> None:
                     "items": detections,
                     "error": scene.error,
                     "latency_ms": round((time.perf_counter() - t1) * 1000, 1),
+                    "raw_count": scene.last_raw_count,
+                    "ignored_person_count": scene.last_person_count,
+                    "low_conf_count": scene.last_low_conf_count,
                 }
             )
             for det in detections:

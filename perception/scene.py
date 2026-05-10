@@ -22,20 +22,30 @@ class SceneDetector:
         self.model = None
         self.names = {}
         self.error: str | None = None
+        self.last_raw_count = 0
+        self.last_person_count = 0
+        self.last_low_conf_count = 0
 
     def detect(self, bgr: np.ndarray) -> list[dict]:
+        self.error = None
+        self.last_raw_count = 0
+        self.last_person_count = 0
+        self.last_low_conf_count = 0
         if not self._ensure_model():
             return []
 
         h, w = bgr.shape[:2]
         results = self.model.predict(bgr, imgsz=416, verbose=False)
         detections: list[dict] = []
+        self.last_raw_count = len(results[0].boxes)
         for box in results[0].boxes:
             cls_id = int(box.cls[0])
             if cls_id == 0:
+                self.last_person_count += 1
                 continue
             conf = float(box.conf[0])
             if conf < OBJECT_CONF_THRESHOLD:
+                self.last_low_conf_count += 1
                 continue
             x1, y1, x2, y2 = [float(v) for v in box.xyxy[0]]
             bbox = [

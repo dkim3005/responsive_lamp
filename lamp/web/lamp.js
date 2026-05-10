@@ -314,7 +314,10 @@ function renderDetectionList(items, msg) {
     return;
   }
   if (!items.length) {
-    els.detections.textContent = `No objects detected. Last detector pass: ${msg.latency_ms ?? 0}ms`;
+    const raw = msg.raw_count ?? 0;
+    const people = msg.ignored_person_count ?? 0;
+    const low = msg.low_conf_count ?? 0;
+    els.detections.textContent = `No stored objects. YOLO saw ${raw} candidates; ignored ${people} person, ${low} low-confidence. Last pass: ${msg.latency_ms ?? 0}ms`;
     return;
   }
   els.detections.textContent = items
