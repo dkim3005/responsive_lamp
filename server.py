@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from behavior.fsm import LampFSM
-from config import DB_PATH, LAMP_TICK_HZ, OBJECT_DETECT_HZ
+from config import DB_PATH, LAMP_TICK_HZ, MIRROR_CAMERA_PREVIEW, OBJECT_DETECT_HZ
 from memory.store import MemoryStore, zone_for_bbox
 from perception.engagement import EngagementDetector
 from perception.scene import SceneDetector
@@ -57,6 +57,19 @@ last_face_xy: list[float] | None = None
 smoothed_face_xy: list[float] | None = None
 last_object_detect_t = 0.0
 processor_started = False
+
+
+def mirror_face_xy(face_xy: list[float] | None) -> list[float] | None:
+    if face_xy is None or not MIRROR_CAMERA_PREVIEW:
+        return face_xy
+    return [-face_xy[0], face_xy[1]]
+
+
+def mirror_bbox_for_action(bbox: list[float]) -> list[float]:
+    if not MIRROR_CAMERA_PREVIEW:
+        return bbox
+    x1, y1, x2, y2 = bbox
+    return [1.0 - x2, y1, 1.0 - x1, y2]
 
 
 @app.get("/")
@@ -118,7 +131,7 @@ async def handle_text(raw: str, ws: WebSocket) -> None:
         bbox = data.get("bbox") or [0.66, 0.1, 0.92, 0.35]
         zone = zone_for_bbox(bbox)
         action = store.upsert_observation(label, bbox, zone, 0.99, time.time())
-        fsm.trigger_object_found(time.time() - server_start_t, bbox)
+        fsm.trigger_object_found(time.time() - server_start_t, mirror_bbox_for_action(bbox))
         await broadcast({"type": "memory_event", "label": label, "zone": zone, "action": action, "conf": 0.99})
     elif data.get("type") == "manual_observation":
         label = str(data.get("label") or "").strip().lower()
@@ -128,7 +141,7 @@ async def handle_text(raw: str, ws: WebSocket) -> None:
             return
         zone = zone_for_bbox(bbox)
         action = store.upsert_observation(label, bbox, zone, 1.0, time.time())
-        fsm.trigger_object_found(time.time() - server_start_t, bbox)
+        fsm.trigger_object_found(time.time() - server_start_t, mirror_bbox_for_action(bbox))
         await broadcast({"type": "memory_event", "label": label, "bbox": bbox, "zone": zone, "action": action, "conf": 1.0})
     elif data.get("type") == "ping":
         await send_json(ws, {"type": "pong", "ts": time.time()})
@@ -161,7 +174,7 @@ async def frame_processor() -> None:
         eng = engagement.process(bgr)
         store.log_latency("engagement_loop", (time.perf_counter() - t0) * 1000)
         last_engaged_raw = bool(eng["engaged_raw"])
-        raw_face_xy = eng["face_xy"]
+        raw_face_xy = mirror_face_xy(eng["face_xy"])
         if raw_face_xy is None:
             smoothed_face_xy = None
         elif smoothed_face_xy is None:
@@ -207,7 +220,7 @@ async def frame_processor() -> None:
             for det in detections:
                 action = store.upsert_observation(det["label"], det["bbox"], det["zone"], det["conf"], now)
                 if action == "insert":
-                    fsm.trigger_object_found(time.time() - server_start_t, det["bbox"])
+                    fsm.trigger_object_found(time.time() - server_start_t, mirror_bbox_for_action(det["bbox"]))
                 await broadcast({"type": "memory_event", **det, "action": action})
 
 
