@@ -1,0 +1,56 @@
+SW/CV Challenge
+Build an expressive 6-DOF lamp system that sees, reacts, remembers, and converses. This challenge tests your ability to design a full perception-to-action pipeline — the core technical problem behind LeLamp.
+
+System Overview
+Your lamp should behave like a social, aware agent:
+Understands when someone is paying attention
+Reacts with expressive behaviors using motion, light, and sound
+Remembers what it has seen
+Recalls past events conversationally via LLM
+
+Demo Scenario
+Step
+What happens
+1. Engagement Detection
+User looks at the lamp → interaction begins. User looks away → lamp disengages.
+2. Attention-Seeking Behavior
+User stays disengaged → lamp attempts subtle re-engagement (movement, light, sound).
+3. Memory Formation
+Lamp observes the scene — identifies and classifies objects in view.
+4. Memory Recall
+User later asks about an object's location → lamp correctly answers using its stored memory.
+
+
+Deliverables
+1. Technical Writeup
+System architecture diagram
+Data flow (high-level and low-level)
+Design decisions and tradeoffs
+2. Demo Video
+Working demonstration of the four steps above
+3. Evaluation
+Engagement detection reliability metrics
+End-to-end latency measurements
+
+What We're Looking For
+Criteria
+What matters
+Architecture
+Is the system well-structured? Are the modules cleanly separated?
+Perception pipeline
+Does engagement detection work reliably in real-time?
+Behavior design
+Are the lamp's reactions expressive and natural?
+Memory system
+Can the lamp store and retrieve scene information accurately?
+Tradeoff reasoning
+Have you explained why you chose this approach over alternatives?
+Code quality
+Is the code clean, modular, and well-documented?
+
+
+Bonus Challenges (optional, for standout candidates)
+Multi-user interaction — identify who is speaking
+Emotion detection from voice tone
+Self-learning behavior that improves over time
+Interruption awareness — knows not to interrupt when the user is talking or watching TV

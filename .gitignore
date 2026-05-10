@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+.env
+memory.db
+*.sqlite
+*.sqlite3
+node_modules/
+.DS_Store
+dist/
+build/
+*.mp4
+*.webm
+yolov8n.pt
+
