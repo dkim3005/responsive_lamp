@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from behavior.fsm import LampFSM
-from config import DB_PATH, LAMP_TICK_HZ, MIRROR_CAMERA_PREVIEW, OBJECT_DETECT_HZ
+from config import CAMERA_CONTROL_FLIP_Y, DB_PATH, LAMP_TICK_HZ, MIRROR_CAMERA_PREVIEW, OBJECT_DETECT_HZ
 from memory.store import MemoryStore, zone_for_bbox
 from perception.engagement import EngagementDetector
 from perception.scene import SceneDetector
@@ -55,14 +55,30 @@ connections: set[WebSocket] = set()
 last_engaged_raw = False
 last_face_xy: list[float] | None = None
 smoothed_face_xy: list[float] | None = None
+latest_control_face_xy: list[float] | None = None
+face_center_offset = [0.0, 0.0]
 last_object_detect_t = 0.0
 processor_started = False
 
 
-def mirror_face_xy(face_xy: list[float] | None) -> list[float] | None:
-    if face_xy is None or not MIRROR_CAMERA_PREVIEW:
+def camera_to_control_face_xy(face_xy: list[float] | None) -> list[float] | None:
+    if face_xy is None:
         return face_xy
-    return [-face_xy[0], face_xy[1]]
+    x, y = face_xy
+    if MIRROR_CAMERA_PREVIEW:
+        x = -x
+    if CAMERA_CONTROL_FLIP_Y:
+        y = -y
+    return [x, y]
+
+
+def apply_face_center_offset(face_xy: list[float] | None) -> list[float] | None:
+    if face_xy is None:
+        return None
+    return [
+        max(-1.0, min(1.0, face_xy[0] - face_center_offset[0])),
+        max(-1.0, min(1.0, face_xy[1] - face_center_offset[1])),
+    ]
 
 
 def mirror_bbox_for_action(bbox: list[float]) -> list[float]:
@@ -126,6 +142,9 @@ async def handle_text(raw: str, ws: WebSocket) -> None:
     elif data.get("type") == "demo_wave":
         fsm.trigger_demo(time.time() - server_start_t)
         await broadcast({"type": "log", "level": "info", "msg": "Demo wave triggered"})
+    elif data.get("type") == "calibrate_face_center":
+        calibrate_face_center()
+        await broadcast({"type": "log", "level": "info", "msg": f"Face center calibrated: {face_center_offset}"})
     elif data.get("type") == "mock_observation":
         label = str(data.get("label") or "cup").strip().lower()
         bbox = data.get("bbox") or [0.66, 0.1, 0.92, 0.35]
@@ -159,8 +178,15 @@ async def handle_binary(data: bytes, ws: WebSocket) -> None:
         asyncio.create_task(handle_voice_audio(data[4:], ws))
 
 
+def calibrate_face_center() -> None:
+    global face_center_offset, smoothed_face_xy
+    if latest_control_face_xy is not None:
+        face_center_offset = latest_control_face_xy.copy()
+        smoothed_face_xy = [0.0, 0.0]
+
+
 async def frame_processor() -> None:
-    global last_engaged_raw, last_face_xy, smoothed_face_xy, last_object_detect_t
+    global last_engaged_raw, last_face_xy, smoothed_face_xy, latest_control_face_xy, last_object_detect_t
     while True:
         jpeg = await frame_queue.get()
         if cv2 is None:
@@ -174,7 +200,8 @@ async def frame_processor() -> None:
         eng = engagement.process(bgr)
         store.log_latency("engagement_loop", (time.perf_counter() - t0) * 1000)
         last_engaged_raw = bool(eng["engaged_raw"])
-        raw_face_xy = mirror_face_xy(eng["face_xy"])
+        latest_control_face_xy = camera_to_control_face_xy(eng["face_xy"])
+        raw_face_xy = apply_face_center_offset(latest_control_face_xy)
         if raw_face_xy is None:
             smoothed_face_xy = None
         elif smoothed_face_xy is None:

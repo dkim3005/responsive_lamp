@@ -313,6 +313,10 @@ ws.addEventListener("message", (event) => {
 });
 
 document.querySelector("#start-camera").addEventListener("click", startCamera);
+document.querySelector("#calibrate-center").addEventListener("click", () => {
+  send({ type: "calibrate_face_center" });
+  toast("face center calibrated");
+});
 document.querySelector("#mock-engaged").addEventListener("click", () => send({ type: "mock_engagement", engaged: true }));
 document.querySelector("#mock-away").addEventListener("click", () => send({ type: "mock_engagement", engaged: false }));
 document.querySelector("#demo-wave").addEventListener("click", () => {
