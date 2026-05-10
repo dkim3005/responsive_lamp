@@ -45,6 +45,8 @@ Open `http://localhost:8000`.
 
 If optional ML/audio packages or API keys are unavailable, use the built-in mock buttons and text input. The core FSM, memory, and grounded recall path still work.
 
+TTS is text-only by default because `edge-tts` can be blocked by the Bing Speech endpoint. To try spoken replies, set `ENABLE_EDGE_TTS=1` in `.env`; if it fails, the app still returns text replies.
+
 ## Demo Checklist
 
 - Engagement detection: user looks at the lamp, lamp brightens and tracks.
@@ -71,4 +73,3 @@ python eval/label_engagement.py engagement_labels.csv
 ## Limitations
 
 This submission uses a simulated 6-DOF lamp rather than hardware. The actuator boundary is intentionally narrow: the backend emits joint angles, light, and sound commands that can be mapped to physical servos later. Multi-user identity, emotion detection, and learned personalization are natural next steps.
-

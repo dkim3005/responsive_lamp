@@ -169,6 +169,7 @@ ws.addEventListener("message", (event) => {
     addMsg("user", msg.text || "(no speech detected)");
   } else if (msg.type === "reply") {
     addMsg("lamp", `${msg.text} · ${msg.latency_ms}ms`);
+    if (msg.tts_error) log(`tts fallback: ${msg.tts_error}`);
     if (msg.audio_b64) {
       els.audio.src = `data:audio/mp3;base64,${msg.audio_b64}`;
       els.audio.play().catch(() => {});
@@ -288,4 +289,3 @@ function chirp() {
 }
 
 animate();
-

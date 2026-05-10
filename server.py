@@ -23,7 +23,7 @@ from perception.engagement import EngagementDetector
 from perception.scene import SceneDetector
 from voice.agent import Agent
 from voice.stt import STT
-from voice.tts import synthesize
+from voice import tts
 
 try:
     import cv2
@@ -216,7 +216,7 @@ async def finish_reply(text: str, ws: WebSocket, t0: float) -> None:
     reply, llm_ms = agent.chat(text)
     store.log_latency("llm", llm_ms)
     tts_t = time.perf_counter()
-    audio = await synthesize(reply)
+    audio = await tts.synthesize(reply)
     tts_ms = (time.perf_counter() - tts_t) * 1000
     store.log_latency("tts", tts_ms)
     e2e_ms = (time.perf_counter() - t0) * 1000
@@ -230,6 +230,7 @@ async def finish_reply(text: str, ws: WebSocket, t0: float) -> None:
             "latency_ms": round(e2e_ms, 1),
             "llm_ms": round(llm_ms, 1),
             "tts_ms": round(tts_ms, 1),
+            "tts_error": tts.last_error,
         },
     )
 

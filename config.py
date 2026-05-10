@@ -14,6 +14,6 @@ LAMP_TICK_HZ = 20
 WHISPER_MODEL = "tiny.en"
 OPENAI_MODEL = "gpt-4o-mini"
 TTS_VOICE = "en-US-AriaNeural"
+ENABLE_EDGE_TTS = False
 DB_PATH = "memory.db"
 HISTORY_MAX_MESSAGES = 20
-
