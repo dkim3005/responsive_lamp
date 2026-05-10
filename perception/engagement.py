@@ -145,17 +145,16 @@ class EngagementDetector:
         x, y, fw, fh = max(faces, key=lambda item: item[2] * item[3])
         cx = ((x + fw / 2) / w - 0.5) * 2.0
         cy = ((y + fh / 2) / h - 0.5) * 2.0
-        centered = abs(cx) < 0.45 and abs(cy) < 0.45
         return {
             "detected": True,
             "yaw_deg": cx * 45.0,
             "pitch_deg": cy * 30.0,
             "face_xy": [max(-1.0, min(1.0, cx)), max(-1.0, min(1.0, cy))],
             "face_bbox": [x / w, y / h, (x + fw) / w, (y + fh) / h],
-            "engaged_raw": centered,
+            "engaged_raw": False,
             "fps": self.fps,
-            "error": error,
-            "method": "haar",
+            "error": error or "face fallback only; gaze not confirmed",
+            "method": "haar-face-only",
         }
 
 
