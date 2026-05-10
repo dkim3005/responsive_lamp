@@ -54,6 +54,7 @@ frame_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=2)
 connections: set[WebSocket] = set()
 last_engaged_raw = False
 last_face_xy: list[float] | None = None
+smoothed_face_xy: list[float] | None = None
 last_object_detect_t = 0.0
 processor_started = False
 
@@ -146,7 +147,7 @@ async def handle_binary(data: bytes, ws: WebSocket) -> None:
 
 
 async def frame_processor() -> None:
-    global last_engaged_raw, last_face_xy, last_object_detect_t
+    global last_engaged_raw, last_face_xy, smoothed_face_xy, last_object_detect_t
     while True:
         jpeg = await frame_queue.get()
         if cv2 is None:
@@ -160,7 +161,17 @@ async def frame_processor() -> None:
         eng = engagement.process(bgr)
         store.log_latency("engagement_loop", (time.perf_counter() - t0) * 1000)
         last_engaged_raw = bool(eng["engaged_raw"])
-        last_face_xy = eng["face_xy"]
+        raw_face_xy = eng["face_xy"]
+        if raw_face_xy is None:
+            smoothed_face_xy = None
+        elif smoothed_face_xy is None:
+            smoothed_face_xy = raw_face_xy
+        else:
+            smoothed_face_xy = [
+                smoothed_face_xy[0] * 0.7 + raw_face_xy[0] * 0.3,
+                smoothed_face_xy[1] * 0.7 + raw_face_xy[1] * 0.3,
+            ]
+        last_face_xy = smoothed_face_xy
         await broadcast(
             {
                 "type": "engagement",

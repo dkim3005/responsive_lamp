@@ -127,15 +127,13 @@ class LampFSM:
 
         if self.state == "ENGAGED":
             if face_xy:
-                joints[0] = -face_xy[0] * 18.0
-                joints[3] = -face_xy[0] * 42.0
+                joints[0] = face_xy[0] * 18.0
+                joints[3] = face_xy[0] * 42.0
                 joints[4] = 20.0 - face_xy[1] * 28.0
                 joints[1] = -28.0 - abs(face_xy[0]) * 8.0
             light = {"intensity": 1.0, "color": "#ffd28a"}
         elif self.state == "DISENGAGED":
-            math = __import__("math")
-            joints[0] = math.sin(t * 0.7) * 5.0
-            joints[4] = 10.0 + math.sin(t * 1.2) * 3.0
+            joints[4] = 10.0
             light = {"intensity": 0.4, "color": "#b8c7ff"}
         elif self.state == "SEEKING_1":
             joints = add_joints(joints, head_wiggle(elapsed))
@@ -162,17 +160,15 @@ class LampFSM:
         elif self.state == "OBJECT_FOUND":
             math = __import__("math")
             ox, oy = self.object_xy or [0.0, 0.0]
-            joints[0] = -ox * 24.0
+            joints[0] = ox * 24.0
             joints[1] = -24.0 + math.sin(10.0 * elapsed) * 5.0
             joints[2] = 54.0 + math.sin(8.0 * elapsed) * 8.0
-            joints[3] = -ox * 48.0
+            joints[3] = ox * 48.0
             joints[4] = 18.0 - oy * 32.0 + math.sin(14.0 * elapsed) * 5.0
             light = {"intensity": 1.0, "color": "#8fffd2"}
             sound = "chirp" if elapsed < 0.22 else None
 
         if self.state == "IDLE":
-            math = __import__("math")
-            joints[0] = math.sin(t * 0.25) * 8.0
-            joints[4] = 16.0 + math.sin(t * 0.8) * 4.0
+            joints[4] = 16.0
 
         return LampCommand(self.state, [round(v, 3) for v in joints], light, sound)
