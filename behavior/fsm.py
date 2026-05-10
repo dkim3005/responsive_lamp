@@ -110,9 +110,9 @@ class LampFSM:
                 self._set_state("DISENGAGED", t)
                 self.disengaged_since = t
                 self.last_seek_level = 0
-            elif self.state == "IDLE" and face_xy is not None:
-                self._set_state("DISENGAGED", t)
-                self.disengaged_since = t
+            elif face_xy is not None and self.state in {"IDLE", "FACE_TRACKING"}:
+                self._set_state("FACE_TRACKING", t)
+                self.disengaged_since = self.disengaged_since if self.disengaged_since is not None else t
 
     def _set_state(self, state: str, t: float) -> None:
         if self.state != state:
@@ -127,11 +127,12 @@ class LampFSM:
 
         if self.state == "ENGAGED":
             if face_xy:
-                joints[0] = face_xy[0] * 18.0
-                joints[3] = face_xy[0] * 42.0
-                joints[4] = 20.0 - face_xy[1] * 28.0
-                joints[1] = -28.0 - abs(face_xy[0]) * 8.0
+                joints = _track_face_joints(joints, face_xy, engaged=True)
             light = {"intensity": 1.0, "color": "#ffd28a"}
+        elif self.state == "FACE_TRACKING":
+            if face_xy:
+                joints = _track_face_joints(joints, face_xy, engaged=False)
+            light = {"intensity": 0.72, "color": "#8fb7ff"}
         elif self.state == "DISENGAGED":
             joints[4] = 10.0
             light = {"intensity": 0.4, "color": "#b8c7ff"}
@@ -172,3 +173,14 @@ class LampFSM:
             joints[4] = 16.0
 
         return LampCommand(self.state, [round(v, 3) for v in joints], light, sound)
+
+
+def _track_face_joints(joints: list[float], face_xy: list[float], engaged: bool) -> list[float]:
+    x, y = face_xy
+    scale = 1.0 if engaged else 0.85
+    joints[0] = x * 20.0 * scale
+    joints[1] = -27.0 - abs(x) * 6.0
+    joints[2] = 58.0
+    joints[3] = x * 46.0 * scale
+    joints[4] = 20.0 - y * 30.0
+    return joints

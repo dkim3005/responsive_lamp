@@ -169,7 +169,7 @@ ws.addEventListener("message", (event) => {
     lastEngagement = msg;
     const method = msg.method ? `/${msg.method}` : "";
     const pose = msg.detected ? ` yaw ${msg.yaw_deg} pitch ${msg.pitch_deg}` : "";
-    const state = msg.detected ? (msg.engaged ? "engaged" : msg.method === "haar-face-only" ? "face-only" : "face-away") : "no-face";
+    const state = msg.detected ? (msg.engaged ? "gaze-locked" : "tracking-face") : "no-face";
     els.engagement.textContent = `${state}${method}${pose}`;
     els.fps.textContent = msg.fps ?? 0;
     drawDetections(lastDetections);
