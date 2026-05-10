@@ -110,50 +110,56 @@ function buildLamp() {
   const upperArm = armMesh(1.05, brass, dark);
   upper.add(upperArm);
 
-  const head = new THREE.Group();
-  head.position.y = 1.05;
-  upper.add(head);
-  head.add(jointSphere(0.17, jointMat));
-  addDofMarker(head, "J4 Head Yaw", 0x45caff, [0.44, 0.12, 0], "y");
-  addDofMarker(head, "J5 Head Pitch", 0xa78bfa, [-0.46, 0.12, 0], "x");
-  addDofMarker(head, "J6 Head Roll", 0xf472b6, [0, 0.48, 0.18], "z");
+  const headYaw = new THREE.Group();
+  headYaw.position.y = 1.05;
+  upper.add(headYaw);
+  headYaw.add(jointSphere(0.17, jointMat));
+  addDofMarker(headYaw, "J4 Head Yaw", 0x45caff, [0.5, 0.12, 0], "y");
+
+  const headPitch = new THREE.Group();
+  headYaw.add(headPitch);
+  addDofMarker(headPitch, "J5 Head Pitch", 0xa78bfa, [-0.5, 0.12, 0], "x");
+
+  const headRoll = new THREE.Group();
+  headPitch.add(headRoll);
+  addDofMarker(headRoll, "J6 Head Roll", 0xf472b6, [0, 0.52, 0.2], "z");
 
   const headMesh = new THREE.Mesh(new THREE.ConeGeometry(0.38, 0.66, 48, 1, true), shade);
   headMesh.rotation.x = Math.PI / 2;
   headMesh.position.z = 0.28;
   headMesh.castShadow = true;
-  head.add(headMesh);
+  headRoll.add(headMesh);
   const rim = new THREE.Mesh(new THREE.TorusGeometry(0.38, 0.025, 12, 72), brass);
   rim.position.z = 0.6;
-  head.add(rim);
+  headRoll.add(rim);
 
   const bulb = new THREE.Mesh(
     new THREE.SphereGeometry(0.14, 24, 24),
     new THREE.MeshStandardMaterial({ color: 0xffe1a1, emissive: 0xffc25a, emissiveIntensity: 2.4 })
   );
   bulb.position.z = 0.68;
-  head.add(bulb);
+  headRoll.add(bulb);
   const halo = new THREE.Mesh(
     new THREE.SphereGeometry(0.28, 32, 32),
     new THREE.MeshBasicMaterial({ color: 0xffd36a, transparent: true, opacity: 0.22, depthWrite: false })
   );
   halo.position.z = 0.68;
-  head.add(halo);
+  headRoll.add(halo);
 
   const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.86, 2.8, 48, 1, true), beamMat);
   beam.rotation.x = Math.PI / 2;
   beam.position.z = 1.95;
-  head.add(beam);
+  headRoll.add(beam);
 
   const spot = new THREE.SpotLight(0xffd28a, 4.2, 8, Math.PI / 6, 0.45, 1.0);
   spot.position.set(0, 0, 0.62);
   const target = new THREE.Object3D();
   target.position.set(0, -2.4, 3.6);
-  head.add(spot);
-  head.add(target);
+  headRoll.add(spot);
+  headRoll.add(target);
   spot.target = target;
 
-  return { root, base, lower, upper, head, spot, bulb, halo, beam };
+  return { root, base, lower, upper, headYaw, headPitch, headRoll, spot, bulb, halo, beam };
 }
 
 function armMesh(length, material, accentMaterial) {
@@ -252,9 +258,9 @@ function applyJoints(j) {
   lamp.base.rotation.y = deg(j[0]);
   lamp.lower.rotation.x = deg(j[1]);
   lamp.upper.rotation.x = deg(j[2]);
-  lamp.head.rotation.y = deg(j[3]);
-  lamp.head.rotation.x = deg(j[4]);
-  lamp.head.rotation.z = deg(j[5]);
+  lamp.headYaw.rotation.y = deg(j[3]);
+  lamp.headPitch.rotation.x = deg(j[4]);
+  lamp.headRoll.rotation.z = deg(j[5]);
 }
 
 function deg(v) {

@@ -71,7 +71,7 @@ class LampFSM:
             self._set_state("ENGAGED" if engaged_raw else "DISENGAGED", t)
             self.disengaged_since = None if engaged_raw else t
 
-        if self.state == "DISENGAGED" and self.disengaged_since is not None:
+        if self.state in {"DISENGAGED", "FACE_TRACKING"} and self.disengaged_since is not None:
             disengaged_for = t - self.disengaged_since
             if disengaged_for >= SEEK_DELAY_SEC[2] and self.last_seek_level < 3:
                 self.last_seek_level = 3
@@ -107,10 +107,10 @@ class LampFSM:
             self.raw_false_since = self.raw_false_since if self.raw_false_since is not None else t
             self.raw_true_since = None
             if self.state == "ENGAGED" and t - self.raw_false_since >= ENGAGEMENT_OFF_HOLD_SEC:
-                self._set_state("DISENGAGED", t)
+                self._set_state("FACE_TRACKING" if face_xy is not None else "DISENGAGED", t)
                 self.disengaged_since = t
                 self.last_seek_level = 0
-            elif face_xy is not None and self.state in {"IDLE", "FACE_TRACKING"}:
+            elif face_xy is not None and self.state in {"IDLE", "DISENGAGED", "FACE_TRACKING"}:
                 self._set_state("FACE_TRACKING", t)
                 self.disengaged_since = self.disengaged_since if self.disengaged_since is not None else t
 
@@ -183,4 +183,5 @@ def _track_face_joints(joints: list[float], face_xy: list[float], engaged: bool)
     joints[2] = 58.0
     joints[3] = x * 60.0 * scale
     joints[4] = 20.0 - y * 36.0
+    joints[5] = -x * 14.0 * scale
     return joints
