@@ -95,7 +95,7 @@ input {
 .panel {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: auto;
   border-radius: 28px;
   padding: 22px;
 }
@@ -150,6 +150,57 @@ button:hover {
 
 .talk form {
   grid-template-columns: 1fr auto;
+}
+
+.vision-card {
+  margin-top: 18px;
+}
+
+.vision-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.vision-head strong {
+  color: var(--gold);
+}
+
+.preview {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  border: 1px solid rgba(246, 237, 221, 0.14);
+  border-radius: 18px;
+  background: #080807;
+}
+
+.preview video,
+.preview canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.preview video {
+  object-fit: fill;
+  transform: scaleX(-1);
+}
+
+.preview canvas {
+  pointer-events: none;
+}
+
+.detections {
+  min-height: 34px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 input {
@@ -229,4 +280,3 @@ input {
     grid-template-columns: 1fr 1fr;
   }
 }
-

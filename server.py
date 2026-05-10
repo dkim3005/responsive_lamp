@@ -163,6 +163,14 @@ async def frame_processor() -> None:
             t1 = time.perf_counter()
             detections = scene.detect(bgr)
             store.log_latency("object_detect", (time.perf_counter() - t1) * 1000)
+            await broadcast(
+                {
+                    "type": "detections",
+                    "items": detections,
+                    "error": scene.error,
+                    "latency_ms": round((time.perf_counter() - t1) * 1000, 1),
+                }
+            )
             for det in detections:
                 action = store.upsert_observation(det["label"], det["bbox"], det["zone"], det["conf"], now)
                 await broadcast({"type": "memory_event", **det, "action": action})

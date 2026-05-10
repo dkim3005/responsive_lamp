@@ -11,6 +11,9 @@ const els = {
   toast: document.querySelector("#toast"),
   video: document.querySelector("#cam"),
   capture: document.querySelector("#capture"),
+  overlay: document.querySelector("#overlay"),
+  detCount: document.querySelector("#det-count"),
+  detections: document.querySelector("#detections"),
   audio: document.querySelector("#reply-audio"),
   ptt: document.querySelector("#ptt"),
   textForm: document.querySelector("#text-form"),
@@ -26,6 +29,7 @@ let audioChunks = [];
 let joints = [0, -30, 60, 20, 0, 0];
 let targetJoints = joints.slice();
 let lightTarget = { intensity: 0.5, color: "#ffffff" };
+let lastDetections = [];
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x10100e, 5, 12);
@@ -165,6 +169,10 @@ ws.addEventListener("message", (event) => {
     const text = `${msg.action} ${msg.label} @ ${msg.zone}`;
     els.memory.textContent = text;
     toast(text);
+  } else if (msg.type === "detections") {
+    lastDetections = msg.items || [];
+    drawDetections(lastDetections);
+    renderDetectionList(lastDetections, msg);
   } else if (msg.type === "transcript") {
     addMsg("user", msg.text || "(no speech detected)");
   } else if (msg.type === "reply") {
@@ -214,6 +222,7 @@ async function startCamera() {
   cameraTimer = setInterval(() => {
     if (ws.readyState !== WebSocket.OPEN) return;
     ctx.drawImage(els.video, 0, 0, 640, 480);
+    drawDetections(lastDetections);
     els.capture.toBlob((blob) => blob && sendBlob(blob, [0x01, 0x46, 0x52, 0x4d]), "image/jpeg", 0.6);
   }, 1000 / 15);
   log("Camera streaming");
@@ -272,6 +281,45 @@ function toast(text) {
   els.toast.textContent = text;
   els.toast.classList.add("show");
   setTimeout(() => els.toast.classList.remove("show"), 2200);
+}
+
+function drawDetections(items) {
+  const canvas = els.overlay;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.lineWidth = 3;
+  ctx.font = "18px Georgia, serif";
+  ctx.textBaseline = "top";
+  for (const item of items) {
+    const [x1, y1, x2, y2] = item.bbox;
+    const x = (1 - x2) * canvas.width;
+    const y = y1 * canvas.height;
+    const w = (x2 - x1) * canvas.width;
+    const h = (y2 - y1) * canvas.height;
+    const label = `${item.label} ${(item.conf * 100).toFixed(0)}%`;
+    ctx.strokeStyle = "#e4aa42";
+    ctx.fillStyle = "rgba(16, 16, 14, 0.72)";
+    ctx.strokeRect(x, y, w, h);
+    const textWidth = ctx.measureText(label).width + 12;
+    ctx.fillRect(x, Math.max(0, y - 28), textWidth, 26);
+    ctx.fillStyle = "#f6eddd";
+    ctx.fillText(label, x + 6, Math.max(0, y - 25));
+  }
+}
+
+function renderDetectionList(items, msg) {
+  els.detCount.textContent = `${items.length} object${items.length === 1 ? "" : "s"}`;
+  if (msg.error) {
+    els.detections.textContent = `Detector fallback: ${msg.error}`;
+    return;
+  }
+  if (!items.length) {
+    els.detections.textContent = `No objects detected. Last detector pass: ${msg.latency_ms ?? 0}ms`;
+    return;
+  }
+  els.detections.textContent = items
+    .map((item) => `${item.label} @ ${item.zone} (${(item.conf * 100).toFixed(0)}%)`)
+    .join(" · ");
 }
 
 function chirp() {

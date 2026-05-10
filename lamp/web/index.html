@@ -44,16 +44,26 @@
           </form>
         </div>
 
+        <section class="vision-card">
+          <div class="vision-head">
+            <span>Camera Object View</span>
+            <strong id="det-count">0 objects</strong>
+          </div>
+          <div class="preview">
+            <video id="cam" autoplay muted playsinline></video>
+            <canvas id="overlay" width="640" height="480"></canvas>
+          </div>
+          <div id="detections" class="detections">Start camera to inspect detections.</div>
+        </section>
+
         <div id="chat" class="chat"></div>
         <div id="log" class="log"></div>
       </aside>
     </main>
 
-    <video id="cam" autoplay muted playsinline hidden></video>
     <canvas id="capture" width="640" height="480" hidden></canvas>
     <audio id="reply-audio"></audio>
     <div id="toast" class="toast"></div>
     <script type="module" src="/static/lamp.js"></script>
   </body>
 </html>
-
