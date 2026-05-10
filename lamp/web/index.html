@@ -3,78 +3,88 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>LeLamp Demo</title>
+    <title>LeLamp</title>
     <link rel="stylesheet" href="/static/style.css" />
-    <script type="importmap">
-      {
-        "imports": {
-          "three": "https://cdn.jsdelivr.net/npm/three@0.171.0/build/three.module.js"
-        }
-      }
-    </script>
+    <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.171.0/build/three.module.js"}}</script>
   </head>
   <body>
     <main class="shell">
+
+      <!-- ── 3D Stage ── -->
       <section class="stage">
         <canvas id="scene"></canvas>
-        <div class="dof-map">
-          <div class="dof-title">
-            <span>6-DOF Actuated Lamp</span>
-            <strong>Live Joint Map</strong>
+
+        <div class="stage-top">
+          <div class="state-pill" id="lamp-state">BOOT</div>
+          <div class="stage-meta">
+            <span id="engagement">—</span>
+            <span class="sep">·</span>
+            <span id="fps">0</span> fps
           </div>
+        </div>
+
+        <div class="dof-map">
+          <div class="dof-title">6-DOF Live</div>
           <div class="dof-row"><b style="--c:#ff6b4a">J1</b><span>Base yaw</span><strong data-joint="0">0°</strong></div>
-          <div class="dof-row"><b style="--c:#ffb000">J2</b><span>Lower arm pitch</span><strong data-joint="1">0°</strong></div>
-          <div class="dof-row"><b style="--c:#68d391">J3</b><span>Upper arm pitch</span><strong data-joint="2">0°</strong></div>
+          <div class="dof-row"><b style="--c:#ffb000">J2</b><span>Lower pitch</span><strong data-joint="1">0°</strong></div>
+          <div class="dof-row"><b style="--c:#68d391">J3</b><span>Upper pitch</span><strong data-joint="2">0°</strong></div>
           <div class="dof-row"><b style="--c:#45caff">J4</b><span>Head yaw</span><strong data-joint="3">0°</strong></div>
           <div class="dof-row"><b style="--c:#a78bfa">J5</b><span>Head pitch</span><strong data-joint="4">0°</strong></div>
           <div class="dof-row"><b style="--c:#f472b6">J6</b><span>Head roll</span><strong data-joint="5">0°</strong></div>
         </div>
-        <div class="hud">
-          <div><span class="label">State</span><strong id="lamp-state">BOOT</strong></div>
-          <div><span class="label">Face Tracking</span><strong id="engagement">unknown</strong></div>
-          <div><span class="label">Vision FPS</span><strong id="fps">0</strong></div>
-          <div><span class="label">Last Memory</span><strong id="memory">none</strong></div>
-        </div>
       </section>
 
+      <!-- ── Control Panel ── -->
       <aside class="panel">
-        <h1>LeLamp</h1>
-        <p class="tagline">An expressive lamp that sees, reacts, remembers, and answers from memory.</p>
-
-        <div class="controls">
-          <button id="start-camera">Start Camera</button>
-          <button id="calibrate-center">Calibrate Face Center</button>
-          <button id="mock-engaged">Mock Engaged</button>
-          <button id="mock-away">Mock Away</button>
-          <button id="demo-wave">Demo Motion + Sound</button>
-          <button id="mock-cup">Mock Cup Memory</button>
+        <div class="panel-header">
+          <h1>LeLamp</h1>
+          <p>Sees · Reacts · Remembers</p>
         </div>
 
-        <div class="talk">
-          <button id="ptt">Hold to Talk</button>
-          <form id="text-form">
-            <input id="text-input" placeholder="Ask: Where is my cup?" />
-            <button type="submit">Send</button>
-          </form>
-        </div>
-
-        <section class="vision-card">
-          <div class="vision-head">
-            <span>Object Detection / Memory</span>
-            <strong id="det-count">0 objects</strong>
-          </div>
-          <div class="preview">
+        <!-- Camera preview -->
+        <div class="cam-section">
+          <div class="preview" id="preview-wrap">
             <video id="cam" autoplay muted playsinline></video>
             <canvas id="overlay" width="640" height="480"></canvas>
+            <div class="cam-start-overlay" id="cam-start-overlay">
+              <button id="start-camera">▶ Start Camera</button>
+            </div>
           </div>
-          <form id="remember-form" class="remember-form">
-            <input id="remember-label" placeholder="Correct label, e.g. wallet" />
-            <button type="submit">Remember As</button>
-          </form>
-          <div id="detections" class="detections">Start camera to inspect detections.</div>
-        </section>
+          <div class="det-bar">
+            <span id="memory">No objects yet</span>
+            <strong id="det-count"></strong>
+          </div>
+          <div class="eval-strip">
+            <button type="button" data-label-engagement="true">Mark looking (E)</button>
+            <button type="button" data-label-engagement="false">Mark away (D)</button>
+            <span id="eval-status">0 labels</span>
+          </div>
+          <div id="detections" class="detections"></div>
+        </div>
 
+        <!-- Talk controls -->
+        <div class="talk-section">
+          <button id="ptt" class="ptt-btn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/>
+            </svg>
+            Hold to Talk
+          </button>
+          <form id="text-form" class="ask-form">
+            <input id="text-input" placeholder="Ask the lamp…" autocomplete="off" />
+            <button type="submit" class="send-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+            </button>
+          </form>
+        </div>
+
+        <!-- Conversation -->
         <div id="chat" class="chat"></div>
+
+        <!-- Debug log -->
         <div id="log" class="log"></div>
       </aside>
     </main>

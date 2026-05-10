@@ -6,7 +6,7 @@ import time
 
 import numpy as np
 
-from config import ENGAGEMENT_PITCH_THRESHOLD_DEG, ENGAGEMENT_YAW_THRESHOLD_DEG
+from config import GAZE_H_THRESHOLD, GAZE_V_THRESHOLD
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
 os.environ.setdefault("YOLO_CONFIG_DIR", "/tmp/Ultralytics")
@@ -14,6 +14,8 @@ os.environ.setdefault("YOLO_CONFIG_DIR", "/tmp/Ultralytics")
 try:
     import cv2
     import mediapipe as mp
+    import absl.logging
+    absl.logging.set_verbosity(absl.logging.ERROR)
 except Exception:  # pragma: no cover - optional runtime dependency
     cv2 = None
     mp = None
@@ -31,6 +33,26 @@ FACE_MODEL_POINTS = np.array(
     dtype=np.float64,
 )
 LANDMARK_IDS = [1, 152, 33, 263, 61, 291]
+
+# Eye corner/lid landmarks for iris gaze computation
+_L_OUTER, _L_INNER, _L_TOP, _L_BOT, _L_IRIS = 33, 133, 159, 145, 468
+_R_OUTER, _R_INNER, _R_TOP, _R_BOT, _R_IRIS = 263, 362, 386, 374, 473
+
+
+def _iris_deviation(landmarks, iris_id: int, inner_id: int, outer_id: int, top_id: int, bot_id: int) -> tuple[float, float]:
+    """Return (horizontal, vertical) iris deviation from eye center, each in [-1, 1]."""
+    iris = landmarks[iris_id]
+    lx = min(landmarks[inner_id].x, landmarks[outer_id].x)
+    rx = max(landmarks[inner_id].x, landmarks[outer_id].x)
+    ty = landmarks[top_id].y
+    by = landmarks[bot_id].y
+    eye_w = rx - lx
+    eye_h = abs(by - ty)
+    if eye_w < 1e-5 or eye_h < 1e-5:
+        return 0.0, 0.0
+    dev_h = ((iris.x - lx) / eye_w - 0.5) * 2.0
+    dev_v = ((iris.y - min(ty, by)) / eye_h - 0.5) * 2.0
+    return dev_h, dev_v
 
 
 class EngagementDetector:
@@ -68,43 +90,55 @@ class EngagementDetector:
 
         h, w = bgr.shape[:2]
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+        rgb.flags.writeable = False
         results = self.mesh.process(rgb)
+        rgb.flags.writeable = True
         if not results.multi_face_landmarks:
             return self._process_haar(bgr)
 
         landmarks = results.multi_face_landmarks[0].landmark
+
+        # Head pose (for display only)
         image_points = np.array([(landmarks[i].x * w, landmarks[i].y * h) for i in LANDMARK_IDS], dtype=np.float64)
         focal_length = w
         camera_matrix = np.array([[focal_length, 0, w / 2], [0, focal_length, h / 2], [0, 0, 1]], dtype=np.float64)
         dist_coeffs = np.zeros((4, 1))
-
         ok, rvec, _ = cv2.solvePnP(
-            FACE_MODEL_POINTS,
-            image_points,
-            camera_matrix,
-            dist_coeffs,
+            FACE_MODEL_POINTS, image_points, camera_matrix, dist_coeffs,
             flags=cv2.SOLVEPNP_ITERATIVE,
         )
         if not ok:
             return self._empty("solvePnP failed")
-
         rot_mat, _ = cv2.Rodrigues(rvec)
         pitch, yaw, _roll = _rotation_matrix_to_euler(rot_mat)
+
+        # Iris-based tracking position
+        eye_cx = (landmarks[_L_IRIS].x + landmarks[_R_IRIS].x) / 2.0
+        eye_cy = (landmarks[_L_IRIS].y + landmarks[_R_IRIS].y) / 2.0
+        cx = (eye_cx - 0.5) * 2.0
+        cy = (eye_cy - 0.5) * 2.0
+
+        # Engagement: iris must be near center of each eye
+        lh, lv = _iris_deviation(landmarks, _L_IRIS, _L_INNER, _L_OUTER, _L_TOP, _L_BOT)
+        rh, rv = _iris_deviation(landmarks, _R_IRIS, _R_INNER, _R_OUTER, _R_TOP, _R_BOT)
+        avg_h = (abs(lh) + abs(rh)) / 2.0
+        avg_v = (abs(lv) + abs(rv)) / 2.0
+        engaged_raw = avg_h < GAZE_H_THRESHOLD and avg_v < GAZE_V_THRESHOLD
+
         xs = [p.x for p in landmarks]
         ys = [p.y for p in landmarks]
-        cx = ((min(xs) + max(xs)) / 2.0 - 0.5) * 2.0
-        cy = ((min(ys) + max(ys)) / 2.0 - 0.5) * 2.0
-        engaged_raw = abs(yaw) < ENGAGEMENT_YAW_THRESHOLD_DEG and abs(pitch) < ENGAGEMENT_PITCH_THRESHOLD_DEG
         return {
             "detected": True,
             "yaw_deg": yaw,
             "pitch_deg": pitch,
+            "gaze_h": round(avg_h, 3),
+            "gaze_v": round(avg_v, 3),
             "face_xy": [max(-1.0, min(1.0, cx)), max(-1.0, min(1.0, cy))],
             "face_bbox": [max(0.0, min(xs)), max(0.0, min(ys)), min(1.0, max(xs)), min(1.0, max(ys))],
             "engaged_raw": engaged_raw,
             "fps": self.fps,
             "error": None,
-            "method": "facemesh",
+            "method": "iris-gaze",
         }
 
     def close(self) -> None:
@@ -116,6 +150,8 @@ class EngagementDetector:
             "detected": False,
             "yaw_deg": 0.0,
             "pitch_deg": 0.0,
+            "gaze_h": None,
+            "gaze_v": None,
             "face_xy": None,
             "face_bbox": None,
             "engaged_raw": False,
@@ -149,6 +185,8 @@ class EngagementDetector:
             "detected": True,
             "yaw_deg": cx * 45.0,
             "pitch_deg": cy * 30.0,
+            "gaze_h": None,
+            "gaze_v": None,
             "face_xy": [max(-1.0, min(1.0, cx)), max(-1.0, min(1.0, cy))],
             "face_bbox": [x / w, y / h, (x + fw) / w, (y + fh) / h],
             "engaged_raw": False,

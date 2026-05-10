@@ -17,7 +17,15 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from behavior.fsm import LampFSM
-from config import CAMERA_CONTROL_FLIP_Y, DB_PATH, LAMP_TICK_HZ, MIRROR_CAMERA_PREVIEW, OBJECT_DETECT_HZ
+from config import (
+    CAMERA_CONTROL_FLIP_Y,
+    CAMERA_OBJECT_CONTROL_FLIP_Y,
+    DB_PATH,
+    ENGAGEMENT_SAMPLE_HZ,
+    LAMP_TICK_HZ,
+    MIRROR_CAMERA_PREVIEW,
+    OBJECT_DETECT_HZ,
+)
 from memory.store import MemoryStore, zone_for_bbox
 from perception.engagement import EngagementDetector
 from perception.scene import SceneDetector
@@ -58,6 +66,9 @@ smoothed_face_xy: list[float] | None = None
 latest_control_face_xy: list[float] | None = None
 face_center_offset = [0.0, 0.0]
 last_object_detect_t = 0.0
+last_obj_announce_t = 0.0
+last_engagement_sample_t = 0.0
+latest_engagement_eval: dict = {}
 processor_started = False
 
 
@@ -81,11 +92,13 @@ def apply_face_center_offset(face_xy: list[float] | None) -> list[float] | None:
     ]
 
 
-def mirror_bbox_for_action(bbox: list[float]) -> list[float]:
-    if not MIRROR_CAMERA_PREVIEW:
-        return bbox
+def bbox_for_action(bbox: list[float]) -> list[float]:
     x1, y1, x2, y2 = bbox
-    return [1.0 - x2, y1, 1.0 - x1, y2]
+    if MIRROR_CAMERA_PREVIEW:
+        x1, x2 = 1.0 - x2, 1.0 - x1
+    if CAMERA_OBJECT_CONTROL_FLIP_Y:
+        y1, y2 = 1.0 - y2, 1.0 - y1
+    return [x1, y1, x2, y2]
 
 
 @app.get("/")
@@ -145,12 +158,26 @@ async def handle_text(raw: str, ws: WebSocket) -> None:
     elif data.get("type") == "calibrate_face_center":
         calibrate_face_center()
         await broadcast({"type": "log", "level": "info", "msg": f"Face center calibrated: {face_center_offset}"})
+    elif data.get("type") == "label_engagement":
+        if not latest_engagement_eval:
+            await send_json(ws, {"type": "log", "level": "error", "msg": "No engagement sample yet; start the camera first"})
+            return
+        truth = bool(data.get("truth"))
+        count = store.label_engagement(truth, latest_engagement_eval)
+        await broadcast(
+            {
+                "type": "engagement_label_saved",
+                "truth": truth,
+                "predicted": bool(latest_engagement_eval.get("predicted")),
+                "count": count,
+            }
+        )
     elif data.get("type") == "mock_observation":
         label = str(data.get("label") or "cup").strip().lower()
         bbox = data.get("bbox") or [0.66, 0.1, 0.92, 0.35]
         zone = zone_for_bbox(bbox)
         action = store.upsert_observation(label, bbox, zone, 0.99, time.time())
-        fsm.trigger_object_found(time.time() - server_start_t, mirror_bbox_for_action(bbox))
+        fsm.trigger_object_found(time.time() - server_start_t, bbox_for_action(bbox))
         await broadcast({"type": "memory_event", "label": label, "zone": zone, "action": action, "conf": 0.99})
     elif data.get("type") == "manual_observation":
         label = str(data.get("label") or "").strip().lower()
@@ -160,7 +187,7 @@ async def handle_text(raw: str, ws: WebSocket) -> None:
             return
         zone = zone_for_bbox(bbox)
         action = store.upsert_observation(label, bbox, zone, 1.0, time.time())
-        fsm.trigger_object_found(time.time() - server_start_t, mirror_bbox_for_action(bbox))
+        fsm.trigger_object_found(time.time() - server_start_t, bbox_for_action(bbox))
         await broadcast({"type": "memory_event", "label": label, "bbox": bbox, "zone": zone, "action": action, "conf": 1.0})
     elif data.get("type") == "ping":
         await send_json(ws, {"type": "pong", "ts": time.time()})
@@ -187,6 +214,7 @@ def calibrate_face_center() -> None:
 
 async def frame_processor() -> None:
     global last_engaged_raw, last_face_xy, smoothed_face_xy, latest_control_face_xy, last_object_detect_t
+    global last_engagement_sample_t, latest_engagement_eval, last_obj_announce_t
     while True:
         jpeg = await frame_queue.get()
         if cv2 is None:
@@ -208,10 +236,25 @@ async def frame_processor() -> None:
             smoothed_face_xy = raw_face_xy
         else:
             smoothed_face_xy = [
-                smoothed_face_xy[0] * 0.7 + raw_face_xy[0] * 0.3,
-                smoothed_face_xy[1] * 0.7 + raw_face_xy[1] * 0.3,
+                smoothed_face_xy[0] * 0.5 + raw_face_xy[0] * 0.5,
+                smoothed_face_xy[1] * 0.5 + raw_face_xy[1] * 0.5,
             ]
         last_face_xy = smoothed_face_xy
+        latest_engagement_eval = {
+            "ts": time.time(),
+            "predicted": last_engaged_raw,
+            "detected": bool(eng["detected"]),
+            "method": eng.get("method"),
+            "face_xy": last_face_xy,
+            "gaze_h": eng.get("gaze_h"),
+            "gaze_v": eng.get("gaze_v"),
+            "yaw_deg": round(float(eng.get("yaw_deg") or 0.0), 1),
+            "pitch_deg": round(float(eng.get("pitch_deg") or 0.0), 1),
+            "fsm_state": fsm.state,
+        }
+        if time.time() - last_engagement_sample_t >= 1.0 / ENGAGEMENT_SAMPLE_HZ:
+            last_engagement_sample_t = time.time()
+            store.log_engagement_sample(latest_engagement_eval)
         await broadcast(
             {
                 "type": "engagement",
@@ -221,6 +264,8 @@ async def frame_processor() -> None:
                 "face_bbox": eng.get("face_bbox"),
                 "yaw_deg": round(float(eng.get("yaw_deg") or 0.0), 1),
                 "pitch_deg": round(float(eng.get("pitch_deg") or 0.0), 1),
+                "gaze_h": eng.get("gaze_h"),
+                "gaze_v": eng.get("gaze_v"),
                 "method": eng.get("method"),
                 "fps": round(float(eng.get("fps") or 0.0), 1),
                 "error": eng.get("error"),
@@ -246,14 +291,25 @@ async def frame_processor() -> None:
             )
             for det in detections:
                 action = store.upsert_observation(det["label"], det["bbox"], det["zone"], det["conf"], now)
-                if action == "insert":
-                    fsm.trigger_object_found(time.time() - server_start_t, mirror_bbox_for_action(det["bbox"]))
+                if action in {"insert", "reappear"}:
+                    fsm.trigger_object_found(time.time() - server_start_t, bbox_for_action(det["bbox"]))
+                    if time.time() - last_obj_announce_t >= 4.0:
+                        last_obj_announce_t = time.time()
+                        asyncio.create_task(tts_announce(f"{det['label']} detected"))
                 await broadcast({"type": "memory_event", **det, "action": action})
 
 
+_SEEK_STATES = {"SEEKING_1", "SEEKING_2", "SEEKING_3"}
+
 async def behavior_loop(ws: WebSocket) -> None:
+    prev_state = ""
     while True:
         cmd = fsm.tick(time.time() - server_start_t, last_engaged_raw, last_face_xy)
+        cur_state = cmd["state"]
+        if cur_state != prev_state:
+            if cur_state in _SEEK_STATES:
+                asyncio.create_task(tts_announce("Please give me your attention."))
+            prev_state = cur_state
         await send_json(ws, {"type": "lamp_state", **cmd})
         await asyncio.sleep(1.0 / LAMP_TICK_HZ)
 
@@ -329,6 +385,10 @@ def webm_to_wav16k(audio_bytes: bytes) -> bytes:
         audio = audio.set_frame_rate(16000).set_channels(1).set_sample_width(2)
         audio.export(dst.name, format="wav")
         return Path(dst.name).read_bytes()
+
+
+async def tts_announce(text: str) -> None:
+    await broadcast({"type": "announce", "text": text, "audio_b64": None})
 
 
 async def broadcast(payload: dict) -> None:

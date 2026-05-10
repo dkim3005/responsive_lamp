@@ -38,6 +38,37 @@ class MemoryStore:
                 value_ms REAL NOT NULL,
                 ts REAL NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS engagement_samples (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts REAL NOT NULL,
+                predicted INTEGER NOT NULL,
+                detected INTEGER NOT NULL,
+                method TEXT,
+                face_xy TEXT,
+                gaze_h REAL,
+                gaze_v REAL,
+                yaw_deg REAL,
+                pitch_deg REAL,
+                fsm_state TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_engagement_samples_ts ON engagement_samples(ts);
+
+            CREATE TABLE IF NOT EXISTS engagement_labels (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts REAL NOT NULL,
+                truth INTEGER NOT NULL,
+                predicted INTEGER NOT NULL,
+                detected INTEGER NOT NULL,
+                method TEXT,
+                face_xy TEXT,
+                gaze_h REAL,
+                gaze_v REAL,
+                yaw_deg REAL,
+                pitch_deg REAL,
+                fsm_state TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_engagement_labels_ts ON engagement_labels(ts);
             """
         )
         self.conn.commit()
@@ -46,11 +77,12 @@ class MemoryStore:
         ts = ts or time.time()
         rows = self.conn.execute(
             "SELECT * FROM memory WHERE label = ? AND last_seen >= ? ORDER BY last_seen DESC",
-            (label, ts - 60.0),
+            (label, ts - 300.0),
         ).fetchall()
         for row in rows:
             old_bbox = json.loads(row["bbox"])
             if _iou(old_bbox, bbox) >= OBJECT_IOU_DUP_THRESHOLD:
+                gap = ts - row["last_seen"]
                 merged = [0.7 * old + 0.3 * new for old, new in zip(old_bbox, bbox)]
                 self.conn.execute(
                     """
@@ -61,7 +93,8 @@ class MemoryStore:
                     (json.dumps(merged), zone, conf, ts, row["id"]),
                 )
                 self.conn.commit()
-                return "update"
+                # re-announce if object reappears after 60 s (e.g. server restart)
+                return "reappear" if gap >= 60.0 else "update"
 
         self.conn.execute(
             """
@@ -93,6 +126,43 @@ class MemoryStore:
         )
         self.conn.commit()
 
+    def log_engagement_sample(self, sample: dict) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO engagement_samples(
+                ts, predicted, detected, method, face_xy, gaze_h, gaze_v, yaw_deg, pitch_deg, fsm_state
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            _engagement_values(sample),
+        )
+        self.conn.commit()
+
+    def label_engagement(self, truth: bool, sample: dict) -> int:
+        self.conn.execute(
+            """
+            INSERT INTO engagement_labels(
+                ts, truth, predicted, detected, method, face_xy, gaze_h, gaze_v, yaw_deg, pitch_deg, fsm_state
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                sample.get("ts", time.time()),
+                int(truth),
+                int(bool(sample.get("predicted"))),
+                int(bool(sample.get("detected"))),
+                sample.get("method"),
+                json.dumps(sample.get("face_xy")),
+                sample.get("gaze_h"),
+                sample.get("gaze_v"),
+                sample.get("yaw_deg"),
+                sample.get("pitch_deg"),
+                sample.get("fsm_state"),
+            ),
+        )
+        self.conn.commit()
+        return int(self.conn.execute("SELECT COUNT(*) FROM engagement_labels").fetchone()[0])
+
     def close(self) -> None:
         self.conn.close()
 
@@ -118,3 +188,17 @@ def _iou(a: list[float], b: list[float]) -> float:
     union = area_a + area_b - inter
     return inter / union if union else 0.0
 
+
+def _engagement_values(sample: dict) -> tuple:
+    return (
+        sample.get("ts", time.time()),
+        int(bool(sample.get("predicted"))),
+        int(bool(sample.get("detected"))),
+        sample.get("method"),
+        json.dumps(sample.get("face_xy")),
+        sample.get("gaze_h"),
+        sample.get("gaze_v"),
+        sample.get("yaw_deg"),
+        sample.get("pitch_deg"),
+        sample.get("fsm_state"),
+    )

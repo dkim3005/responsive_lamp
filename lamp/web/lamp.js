@@ -18,9 +18,8 @@ const els = {
   ptt: document.querySelector("#ptt"),
   textForm: document.querySelector("#text-form"),
   textInput: document.querySelector("#text-input"),
-  rememberForm: document.querySelector("#remember-form"),
-  rememberLabel: document.querySelector("#remember-label"),
   dofValues: document.querySelectorAll("[data-joint]"),
+  evalStatus: document.querySelector("#eval-status"),
 };
 
 const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
@@ -29,7 +28,7 @@ ws.binaryType = "arraybuffer";
 let cameraTimer = null;
 let recorder = null;
 let audioChunks = [];
-let joints = [0, -30, 60, 20, 0, 0];
+let joints = [0, -30, 60, 0, -25, 0];
 let targetJoints = joints.slice();
 let lightTarget = { intensity: 0.5, color: "#ffffff" };
 let lastDetections = [];
@@ -42,9 +41,9 @@ const renderer = new THREE.WebGLRenderer({ canvas: els.canvas, antialias: true }
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 
-const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-camera.position.set(3.4, 2.4, 5.3);
-camera.lookAt(0, 1.25, 0);
+const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
+camera.position.set(0, 2.5, 7.5);
+camera.lookAt(0, 1.2, 0);
 
 scene.add(new THREE.HemisphereLight(0xffefd0, 0x1a2430, 1.4));
 const keyLight = new THREE.DirectionalLight(0xffd59a, 1.8);
@@ -68,13 +67,7 @@ function buildLamp() {
   const dark = new THREE.MeshStandardMaterial({ color: 0x171410, metalness: 0.42, roughness: 0.36 });
   const shade = new THREE.MeshStandardMaterial({ color: 0x2f2a22, metalness: 0.18, roughness: 0.46 });
   const jointMat = new THREE.MeshStandardMaterial({ color: 0xffc35a, emissive: 0x6a3500, emissiveIntensity: 0.18 });
-  const beamMat = new THREE.MeshBasicMaterial({
-    color: 0xffd36a,
-    transparent: true,
-    opacity: 0.2,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-  });
+
 
   const root = new THREE.Group();
   root.scale.setScalar(1.32);
@@ -146,10 +139,6 @@ function buildLamp() {
   halo.position.z = 0.68;
   headRoll.add(halo);
 
-  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.86, 2.8, 48, 1, true), beamMat);
-  beam.rotation.x = Math.PI / 2;
-  beam.position.z = 1.95;
-  headRoll.add(beam);
 
   const spot = new THREE.SpotLight(0xffd28a, 4.2, 8, Math.PI / 6, 0.45, 1.0);
   spot.position.set(0, 0, 0.62);
@@ -159,7 +148,7 @@ function buildLamp() {
   headRoll.add(target);
   spot.target = target;
 
-  return { root, base, lower, upper, headYaw, headPitch, headRoll, spot, bulb, halo, beam };
+  return { root, base, lower, upper, headYaw, headPitch, headRoll, spot, bulb, halo };
 }
 
 function armMesh(length, material, accentMaterial) {
@@ -240,7 +229,7 @@ function resize() {
 function animate() {
   requestAnimationFrame(animate);
   resize();
-  joints = joints.map((v, i) => v + (targetJoints[i] - v) * 0.18);
+  joints = joints.map((v, i) => v + (targetJoints[i] - v) * 0.30);
   applyJoints(joints);
   updateDofReadout(joints);
   lamp.spot.intensity += (lightTarget.intensity * 4.8 - lamp.spot.intensity) * 0.18;
@@ -249,8 +238,6 @@ function animate() {
   lamp.bulb.material.emissiveIntensity = 1.2 + lightTarget.intensity * 3.4;
   lamp.halo.material.color.set(lightTarget.color);
   lamp.halo.material.opacity = 0.08 + lightTarget.intensity * 0.28;
-  lamp.beam.material.color.set(lightTarget.color);
-  lamp.beam.material.opacity = 0.04 + lightTarget.intensity * 0.22;
   renderer.render(scene, camera);
 }
 
@@ -280,20 +267,28 @@ ws.addEventListener("message", (event) => {
   if (msg.type === "lamp_state") {
     targetJoints = msg.joints;
     lightTarget = msg.light;
-    els.state.textContent = msg.state;
+    const seekIn = msg.disengaged_for != null ? ` ${msg.disengaged_for}s` : "";
+    els.state.textContent = msg.state + seekIn;
+    const s = msg.state;
+    els.state.className = "state-pill" +
+      (s === "ENGAGED"    ? " engaged" :
+       s === "SEEKING_3"  ? " seeking-hot" :
+       s.startsWith("SEEKING") || s === "DEMO_WAVE" ? " seeking" :
+       s === "OBJECT_FOUND" ? " found" : "");
     if (msg.sound === "chirp") chirp();
   } else if (msg.type === "engagement") {
     lastEngagement = msg;
     const method = msg.method ? `/${msg.method}` : "";
-    const pose = msg.detected ? ` yaw ${msg.yaw_deg} pitch ${msg.pitch_deg}` : "";
+    const gaze = msg.gaze_h != null && msg.gaze_v != null ? ` gaze ${msg.gaze_h}/${msg.gaze_v}` : "";
+    const pose = msg.detected ? ` yaw ${msg.yaw_deg} pitch ${msg.pitch_deg}${gaze}` : "";
     const state = msg.detected ? (msg.engaged ? "gaze-locked" : "tracking-face") : "no-face";
     els.engagement.textContent = `${state}${method}${pose}`;
     els.fps.textContent = msg.fps ?? 0;
     drawDetections(lastDetections);
   } else if (msg.type === "memory_event") {
-    const text = `${msg.action} ${msg.label} @ ${msg.zone}`;
+    const text = `${msg.label} @ ${msg.zone}`;
     els.memory.textContent = text;
-    toast(text);
+    if (msg.action === "insert") toast(`New: ${text}`);
   } else if (msg.type === "detections") {
     lastDetections = msg.items || [];
     drawDetections(lastDetections);
@@ -305,48 +300,48 @@ ws.addEventListener("message", (event) => {
     if (msg.tts_error) log(`tts fallback: ${msg.tts_error}`);
     if (msg.audio_b64) {
       els.audio.src = `data:audio/mp3;base64,${msg.audio_b64}`;
-      els.audio.play().catch(() => {});
+      els.audio.play().catch(() => speak(msg.text));
+    } else {
+      speak(msg.text);
     }
+  } else if (msg.type === "announce") {
+    if (msg.audio_b64) {
+      els.audio.src = `data:audio/mp3;base64,${msg.audio_b64}`;
+      els.audio.play().catch(() => speak(msg.text));
+    } else {
+      speak(msg.text);
+    }
+    if (msg.text) toast(msg.text);
+  } else if (msg.type === "engagement_label_saved") {
+    const truth = msg.truth ? "looking" : "away";
+    const predicted = msg.predicted ? "looking" : "away";
+    els.evalStatus.textContent = `${msg.count} labels`;
+    toast(`Label saved: truth ${truth}, predicted ${predicted}`);
   } else if (msg.type === "log") {
     log(`${msg.level}: ${msg.msg}`);
   }
 });
 
 document.querySelector("#start-camera").addEventListener("click", startCamera);
-document.querySelector("#calibrate-center").addEventListener("click", () => {
-  send({ type: "calibrate_face_center" });
-  toast("face center calibrated");
+document.querySelectorAll("[data-label-engagement]").forEach((button) => {
+  button.addEventListener("click", () => markEngagement(button.dataset.labelEngagement === "true"));
 });
-document.querySelector("#mock-engaged").addEventListener("click", () => send({ type: "mock_engagement", engaged: true }));
-document.querySelector("#mock-away").addEventListener("click", () => send({ type: "mock_engagement", engaged: false }));
-document.querySelector("#demo-wave").addEventListener("click", () => {
-  unlockAudio();
-  send({ type: "demo_wave" });
-  chirp();
-});
-document.querySelector("#mock-cup").addEventListener("click", () => send({ type: "mock_observation", label: "cup" }));
 els.textForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const content = els.textInput.value.trim();
   if (content) send({ type: "text_input", content });
   els.textInput.value = "";
 });
-els.rememberForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-  const label = els.rememberLabel.value.trim().toLowerCase();
-  if (!label) return;
-  const bbox = lastDetections[0]?.bbox || [0.35, 0.35, 0.65, 0.65];
-  send({ type: "manual_observation", label, bbox });
-  toast(`remembering visible object as ${label}`);
-  els.rememberLabel.value = "";
-});
-
 els.ptt.addEventListener("pointerdown", startRecording);
 els.ptt.addEventListener("pointerup", stopRecording);
 window.addEventListener("keydown", (event) => {
   if (event.code === "Space" && document.activeElement !== els.textInput) {
     event.preventDefault();
     startRecording();
+  } else if (event.code === "KeyE" && document.activeElement !== els.textInput && !event.repeat) {
+    markEngagement(true);
+  } else if (event.code === "KeyD" && document.activeElement !== els.textInput && !event.repeat) {
+    markEngagement(false);
   }
 });
 window.addEventListener("keyup", (event) => {
@@ -368,6 +363,7 @@ async function startCamera() {
     drawDetections(lastDetections);
     els.capture.toBlob((blob) => blob && sendBlob(blob, [0x01, 0x46, 0x52, 0x4d]), "image/jpeg", 0.6);
   }, 1000 / 15);
+  document.getElementById("cam-start-overlay").classList.add("hidden");
   log("Camera streaming");
 }
 
@@ -404,6 +400,10 @@ function sendBlob(blob, prefix) {
 
 function send(payload) {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
+}
+
+function markEngagement(truth) {
+  send({ type: "label_engagement", truth });
 }
 
 function addMsg(kind, text) {
@@ -484,7 +484,7 @@ function renderDetectionList(items, msg) {
   }
   els.detections.textContent = items
     .map((item) => `${item.label} @ ${item.zone} (${(item.conf * 100).toFixed(0)}%)`)
-    .join(" · ") + " · Use Remember As to correct the first box.";
+    .join(" · ");
 }
 
 function chirp() {
@@ -508,9 +508,13 @@ function getAudioContext() {
   return audioContext;
 }
 
-function unlockAudio() {
-  const ctx = getAudioContext();
-  if (ctx.state === "suspended") ctx.resume();
+function speak(text) {
+  if (!text || !window.speechSynthesis) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "en-US";
+  u.rate = 1.05;
+  speechSynthesis.speak(u);
 }
 
 animate();
