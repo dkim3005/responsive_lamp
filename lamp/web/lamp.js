@@ -18,6 +18,8 @@ const els = {
   ptt: document.querySelector("#ptt"),
   textForm: document.querySelector("#text-form"),
   textInput: document.querySelector("#text-input"),
+  rememberForm: document.querySelector("#remember-form"),
+  rememberLabel: document.querySelector("#remember-label"),
 };
 
 const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
@@ -197,6 +199,15 @@ els.textForm.addEventListener("submit", (event) => {
   if (content) send({ type: "text_input", content });
   els.textInput.value = "";
 });
+els.rememberForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const label = els.rememberLabel.value.trim().toLowerCase();
+  if (!label) return;
+  const bbox = lastDetections[0]?.bbox || [0.35, 0.35, 0.65, 0.65];
+  send({ type: "manual_observation", label, bbox });
+  toast(`remembering visible object as ${label}`);
+  els.rememberLabel.value = "";
+});
 
 els.ptt.addEventListener("pointerdown", startRecording);
 els.ptt.addEventListener("pointerup", stopRecording);
@@ -322,7 +333,7 @@ function renderDetectionList(items, msg) {
   }
   els.detections.textContent = items
     .map((item) => `${item.label} @ ${item.zone} (${(item.conf * 100).toFixed(0)}%)`)
-    .join(" · ");
+    .join(" · ") + " · Use Remember As to correct the first box.";
 }
 
 function chirp() {

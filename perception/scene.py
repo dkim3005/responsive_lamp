@@ -4,7 +4,7 @@ import os
 
 import numpy as np
 
-from config import OBJECT_CONF_THRESHOLD
+from config import OBJECT_CONF_THRESHOLD, YOLO_IMAGE_SIZE, YOLO_MODEL
 from memory.store import zone_for_bbox
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
@@ -35,7 +35,7 @@ class SceneDetector:
             return []
 
         h, w = bgr.shape[:2]
-        results = self.model.predict(bgr, imgsz=416, verbose=False)
+        results = self.model.predict(bgr, imgsz=YOLO_IMAGE_SIZE, verbose=False)
         detections: list[dict] = []
         self.last_raw_count = len(results[0].boxes)
         for box in results[0].boxes:
@@ -71,7 +71,7 @@ class SceneDetector:
         if self.model is not None:
             return True
         try:
-            self.model = YOLO("yolov8n.pt")
+            self.model = YOLO(YOLO_MODEL)
             self.names = self.model.names
             return True
         except Exception as exc:

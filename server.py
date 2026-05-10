@@ -114,6 +114,15 @@ async def handle_text(raw: str, ws: WebSocket) -> None:
         zone = zone_for_bbox(bbox)
         action = store.upsert_observation(label, bbox, zone, 0.99, time.time())
         await broadcast({"type": "memory_event", "label": label, "zone": zone, "action": action, "conf": 0.99})
+    elif data.get("type") == "manual_observation":
+        label = str(data.get("label") or "").strip().lower()
+        bbox = data.get("bbox") or [0.35, 0.35, 0.65, 0.65]
+        if not label:
+            await send_json(ws, {"type": "log", "level": "error", "msg": "Manual observation label is empty"})
+            return
+        zone = zone_for_bbox(bbox)
+        action = store.upsert_observation(label, bbox, zone, 1.0, time.time())
+        await broadcast({"type": "memory_event", "label": label, "bbox": bbox, "zone": zone, "action": action, "conf": 1.0})
     elif data.get("type") == "ping":
         await send_json(ws, {"type": "pong", "ts": time.time()})
 

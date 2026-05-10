@@ -203,6 +203,18 @@ button:hover {
   line-height: 1.35;
 }
 
+.remember-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.remember-form input,
+.remember-form button {
+  min-height: 36px;
+}
+
 input {
   min-width: 0;
   border: 1px solid rgba(246, 237, 221, 0.15);
