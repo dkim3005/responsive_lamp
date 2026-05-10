@@ -192,6 +192,11 @@ ws.addEventListener("message", (event) => {
 document.querySelector("#start-camera").addEventListener("click", startCamera);
 document.querySelector("#mock-engaged").addEventListener("click", () => send({ type: "mock_engagement", engaged: true }));
 document.querySelector("#mock-away").addEventListener("click", () => send({ type: "mock_engagement", engaged: false }));
+document.querySelector("#demo-wave").addEventListener("click", () => {
+  unlockAudio();
+  send({ type: "demo_wave" });
+  chirp();
+});
 document.querySelector("#mock-cup").addEventListener("click", () => send({ type: "mock_observation", label: "cup" }));
 els.textForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -337,7 +342,7 @@ function renderDetectionList(items, msg) {
 }
 
 function chirp() {
-  const ctx = new AudioContext();
+  const ctx = getAudioContext();
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.frequency.setValueAtTime(620, ctx.currentTime);
@@ -348,6 +353,18 @@ function chirp() {
   osc.connect(gain).connect(ctx.destination);
   osc.start();
   osc.stop(ctx.currentTime + 0.18);
+}
+
+let audioContext = null;
+
+function getAudioContext() {
+  audioContext ||= new AudioContext();
+  return audioContext;
+}
+
+function unlockAudio() {
+  const ctx = getAudioContext();
+  if (ctx.state === "suspended") ctx.resume();
 }
 
 animate();

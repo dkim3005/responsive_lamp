@@ -39,6 +39,11 @@ class LampFSM:
         self.no_face_since: float | None = None
         self.disengaged_since: float | None = None
         self.last_seek_level = 0
+        self.demo_until = 0.0
+
+    def trigger_demo(self, t: float) -> None:
+        self.demo_until = t + 2.5
+        self._set_state("DEMO_WAVE", t)
 
     def tick(self, t: float, engaged_raw: bool, face_xy: list[float] | None) -> dict:
         self._update_hysteresis(t, engaged_raw, face_xy)
@@ -50,6 +55,9 @@ class LampFSM:
             self._set_state("DISENGAGED", t)
         elif self.state == "SEEKING_3" and elapsed >= 1.2:
             self._set_state("DISENGAGED", t)
+        elif self.state == "DEMO_WAVE" and t >= self.demo_until:
+            self._set_state("DISENGAGED", t)
+            self.disengaged_since = t
 
         if self.state == "DISENGAGED" and self.disengaged_since is not None:
             disengaged_for = t - self.disengaged_since
@@ -122,11 +130,21 @@ class LampFSM:
             light = {"intensity": intensity, "color": "#ffcf70"}
         elif self.state == "SEEKING_3":
             joints = add_joints(joints, base_scan(elapsed))
+            joints[1] = -22.0 + __import__("math").sin(8.0 * elapsed) * 10.0
+            joints[3] = __import__("math").sin(10.0 * elapsed) * 28.0
             light = {"intensity": 1.0, "color": "#ffb347"}
             sound = "chirp" if elapsed < 0.25 else None
+        elif self.state == "DEMO_WAVE":
+            math = __import__("math")
+            joints[0] = math.sin(5.0 * elapsed) * 35.0
+            joints[1] = -28.0 + math.sin(7.0 * elapsed) * 14.0
+            joints[2] = 58.0 + math.sin(6.0 * elapsed) * 16.0
+            joints[3] = math.sin(11.0 * elapsed) * 35.0
+            joints[4] = 18.0 + math.sin(9.0 * elapsed) * 12.0
+            light = {"intensity": 1.0, "color": "#ffcc58"}
+            sound = "chirp" if elapsed < 0.35 else None
 
-        if self.state not in {"SEEKING_1", "SEEKING_2", "SEEKING_3"} and int(t) % 30 in {0, 1}:
+        if self.state not in {"SEEKING_1", "SEEKING_2", "SEEKING_3", "DEMO_WAVE"} and int(t) % 30 in {0, 1}:
             joints[0] += 6.0
 
         return LampCommand(self.state, [round(v, 3) for v in joints], light, sound)
-

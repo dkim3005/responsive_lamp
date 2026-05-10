@@ -48,6 +48,7 @@ scene = SceneDetector()
 fsm = LampFSM()
 stt = STT()
 agent = Agent(store)
+server_start_t = time.time()
 
 frame_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=2)
 connections: set[WebSocket] = set()
@@ -108,6 +109,9 @@ async def handle_text(raw: str, ws: WebSocket) -> None:
         asyncio.create_task(handle_voice_text(data.get("content", ""), ws))
     elif data.get("type") == "mock_engagement":
         await set_mock_engagement(bool(data.get("engaged")), ws)
+    elif data.get("type") == "demo_wave":
+        fsm.trigger_demo(time.time() - server_start_t)
+        await broadcast({"type": "log", "level": "info", "msg": "Demo wave triggered"})
     elif data.get("type") == "mock_observation":
         label = str(data.get("label") or "cup").strip().lower()
         bbox = data.get("bbox") or [0.66, 0.1, 0.92, 0.35]
@@ -200,6 +204,8 @@ async def set_mock_engagement(engaged: bool, ws: WebSocket) -> None:
     global last_engaged_raw, last_face_xy
     last_engaged_raw = engaged
     last_face_xy = [0.0, 0.0] if engaged else [0.75, 0.0]
+    if not engaged:
+        fsm.trigger_demo(time.time() - server_start_t)
     await send_json(
         ws,
         {
