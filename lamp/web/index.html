@@ -17,6 +17,18 @@
     <main class="shell">
       <section class="stage">
         <canvas id="scene"></canvas>
+        <div class="dof-map">
+          <div class="dof-title">
+            <span>6-DOF Actuated Lamp</span>
+            <strong>Live Joint Map</strong>
+          </div>
+          <div class="dof-row"><b style="--c:#ff6b4a">J1</b><span>Base yaw</span><strong data-joint="0">0°</strong></div>
+          <div class="dof-row"><b style="--c:#ffb000">J2</b><span>Lower arm pitch</span><strong data-joint="1">0°</strong></div>
+          <div class="dof-row"><b style="--c:#68d391">J3</b><span>Upper arm pitch</span><strong data-joint="2">0°</strong></div>
+          <div class="dof-row"><b style="--c:#45caff">J4</b><span>Head yaw</span><strong data-joint="3">0°</strong></div>
+          <div class="dof-row"><b style="--c:#a78bfa">J5</b><span>Head pitch</span><strong data-joint="4">0°</strong></div>
+          <div class="dof-row"><b style="--c:#f472b6">J6</b><span>Head roll</span><strong data-joint="5">0°</strong></div>
+        </div>
         <div class="hud">
           <div><span class="label">State</span><strong id="lamp-state">BOOT</strong></div>
           <div><span class="label">Face Tracking</span><strong id="engagement">unknown</strong></div>

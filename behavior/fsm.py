@@ -178,9 +178,9 @@ class LampFSM:
 def _track_face_joints(joints: list[float], face_xy: list[float], engaged: bool) -> list[float]:
     x, y = face_xy
     scale = 1.0 if engaged else 0.85
-    joints[0] = x * 20.0 * scale
+    joints[0] = x * 26.0 * scale
     joints[1] = -27.0 - abs(x) * 6.0
     joints[2] = 58.0
-    joints[3] = x * 46.0 * scale
-    joints[4] = 20.0 - y * 30.0
+    joints[3] = x * 60.0 * scale
+    joints[4] = 20.0 - y * 36.0
     return joints

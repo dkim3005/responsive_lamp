@@ -20,6 +20,7 @@ const els = {
   textInput: document.querySelector("#text-input"),
   rememberForm: document.querySelector("#remember-form"),
   rememberLabel: document.querySelector("#remember-label"),
+  dofValues: document.querySelectorAll("[data-joint]"),
 };
 
 const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
@@ -35,25 +36,25 @@ let lastDetections = [];
 let lastEngagement = null;
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0x10100e, 5, 12);
+scene.fog = new THREE.Fog(0x10100e, 6, 16);
 
 const renderer = new THREE.WebGLRenderer({ canvas: els.canvas, antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 
 const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-camera.position.set(2.6, 2.0, 4.2);
-camera.lookAt(0, 0.8, 0);
+camera.position.set(3.4, 2.4, 5.3);
+camera.lookAt(0, 1.25, 0);
 
-scene.add(new THREE.HemisphereLight(0xffefd0, 0x1a2430, 1.2));
-const keyLight = new THREE.DirectionalLight(0xffd59a, 1.2);
-keyLight.position.set(3, 4, 2);
+scene.add(new THREE.HemisphereLight(0xffefd0, 0x1a2430, 1.4));
+const keyLight = new THREE.DirectionalLight(0xffd59a, 1.8);
+keyLight.position.set(3, 5, 3);
 keyLight.castShadow = true;
 scene.add(keyLight);
 
 const floor = new THREE.Mesh(
-  new THREE.CircleGeometry(3.2, 80),
-  new THREE.MeshStandardMaterial({ color: 0x2a2419, roughness: 0.88 })
+  new THREE.CircleGeometry(4.4, 96),
+  new THREE.MeshStandardMaterial({ color: 0x241e14, roughness: 0.86, metalness: 0.08 })
 );
 floor.rotation.x = -Math.PI / 2;
 floor.receiveShadow = true;
@@ -63,67 +64,164 @@ const lamp = buildLamp();
 scene.add(lamp.root);
 
 function buildLamp() {
-  const brass = new THREE.MeshStandardMaterial({ color: 0xcf8f2e, metalness: 0.15, roughness: 0.42 });
-  const shade = new THREE.MeshStandardMaterial({ color: 0x33302a, metalness: 0.05, roughness: 0.58 });
+  const brass = new THREE.MeshStandardMaterial({ color: 0xd79635, metalness: 0.35, roughness: 0.32 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x171410, metalness: 0.42, roughness: 0.36 });
+  const shade = new THREE.MeshStandardMaterial({ color: 0x2f2a22, metalness: 0.18, roughness: 0.46 });
+  const jointMat = new THREE.MeshStandardMaterial({ color: 0xffc35a, emissive: 0x6a3500, emissiveIntensity: 0.18 });
+  const beamMat = new THREE.MeshBasicMaterial({
+    color: 0xffd36a,
+    transparent: true,
+    opacity: 0.2,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
 
   const root = new THREE.Group();
+  root.scale.setScalar(1.32);
+  root.position.y = -0.08;
+
   const base = new THREE.Group();
   root.add(base);
 
-  const baseMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.56, 0.12, 48), brass);
+  const baseMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.68, 0.78, 0.18, 72), brass);
   baseMesh.castShadow = true;
   baseMesh.receiveShadow = true;
-  baseMesh.position.y = 0.06;
+  baseMesh.position.y = 0.09;
   base.add(baseMesh);
+  const baseCap = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.48, 0.12, 72), dark);
+  baseCap.position.y = 0.2;
+  baseCap.castShadow = true;
+  base.add(baseCap);
+  addDofMarker(base, "J1 Base Yaw", 0xff6b4a, [0.92, 0.22, 0], "y");
 
   const lower = new THREE.Group();
-  lower.position.y = 0.12;
+  lower.position.y = 0.18;
   base.add(lower);
-  const lowerArm = armMesh(0.95, brass);
+  lower.add(jointSphere(0.18, jointMat));
+  addDofMarker(lower, "J2 Lower Pitch", 0xffb000, [-0.42, 0.05, 0], "x");
+  const lowerArm = armMesh(1.25, brass, dark);
   lower.add(lowerArm);
 
   const upper = new THREE.Group();
-  upper.position.y = 0.95;
+  upper.position.y = 1.25;
   lower.add(upper);
-  const upperArm = armMesh(0.78, brass);
+  upper.add(jointSphere(0.16, jointMat));
+  addDofMarker(upper, "J3 Upper Pitch", 0x68d391, [0.42, 0.04, 0], "x");
+  const upperArm = armMesh(1.05, brass, dark);
   upper.add(upperArm);
 
   const head = new THREE.Group();
-  head.position.y = 0.78;
+  head.position.y = 1.05;
   upper.add(head);
-  const headMesh = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.45, 36, 1, true), shade);
+  head.add(jointSphere(0.17, jointMat));
+  addDofMarker(head, "J4 Head Yaw", 0x45caff, [0.44, 0.12, 0], "y");
+  addDofMarker(head, "J5 Head Pitch", 0xa78bfa, [-0.46, 0.12, 0], "x");
+  addDofMarker(head, "J6 Head Roll", 0xf472b6, [0, 0.48, 0.18], "z");
+
+  const headMesh = new THREE.Mesh(new THREE.ConeGeometry(0.38, 0.66, 48, 1, true), shade);
   headMesh.rotation.x = Math.PI / 2;
-  headMesh.position.z = 0.18;
+  headMesh.position.z = 0.28;
   headMesh.castShadow = true;
   head.add(headMesh);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.38, 0.025, 12, 72), brass);
+  rim.position.z = 0.6;
+  head.add(rim);
 
   const bulb = new THREE.Mesh(
-    new THREE.SphereGeometry(0.08, 18, 18),
-    new THREE.MeshStandardMaterial({ color: 0xffe1a1, emissive: 0xffc25a, emissiveIntensity: 1.4 })
+    new THREE.SphereGeometry(0.14, 24, 24),
+    new THREE.MeshStandardMaterial({ color: 0xffe1a1, emissive: 0xffc25a, emissiveIntensity: 2.4 })
   );
-  bulb.position.z = 0.42;
+  bulb.position.z = 0.68;
   head.add(bulb);
+  const halo = new THREE.Mesh(
+    new THREE.SphereGeometry(0.28, 32, 32),
+    new THREE.MeshBasicMaterial({ color: 0xffd36a, transparent: true, opacity: 0.22, depthWrite: false })
+  );
+  halo.position.z = 0.68;
+  head.add(halo);
 
-  const spot = new THREE.SpotLight(0xffd28a, 1.8, 6, Math.PI / 7, 0.4, 1.2);
-  spot.position.set(0, 0, 0.35);
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.86, 2.8, 48, 1, true), beamMat);
+  beam.rotation.x = Math.PI / 2;
+  beam.position.z = 1.95;
+  head.add(beam);
+
+  const spot = new THREE.SpotLight(0xffd28a, 4.2, 8, Math.PI / 6, 0.45, 1.0);
+  spot.position.set(0, 0, 0.62);
   const target = new THREE.Object3D();
-  target.position.set(0, -1.8, 2.6);
+  target.position.set(0, -2.4, 3.6);
   head.add(spot);
   head.add(target);
   spot.target = target;
 
-  return { root, base, lower, upper, head, spot, bulb };
+  return { root, base, lower, upper, head, spot, bulb, halo, beam };
 }
 
-function armMesh(length, material) {
+function armMesh(length, material, accentMaterial) {
   const group = new THREE.Group();
-  const left = new THREE.Mesh(new THREE.BoxGeometry(0.055, length, 0.055), material);
+  const left = new THREE.Mesh(new THREE.BoxGeometry(0.075, length, 0.075), material);
   const right = left.clone();
-  left.position.set(-0.07, length / 2, 0);
-  right.position.set(0.07, length / 2, 0);
+  left.position.set(-0.13, length / 2, 0);
+  right.position.set(0.13, length / 2, 0);
   left.castShadow = right.castShadow = true;
-  group.add(left, right);
+  const brace = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.055, 0.08), accentMaterial);
+  brace.position.y = length * 0.52;
+  brace.castShadow = true;
+  const brace2 = brace.clone();
+  brace2.position.y = length * 0.78;
+  group.add(left, right, brace, brace2);
   return group;
+}
+
+function jointSphere(radius, material) {
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 32, 20), material);
+  mesh.castShadow = true;
+  return mesh;
+}
+
+function addDofMarker(parent, text, color, position, axis) {
+  const marker = new THREE.Group();
+  marker.position.set(...position);
+  const torus = new THREE.Mesh(
+    new THREE.TorusGeometry(0.18, 0.012, 8, 48),
+    new THREE.MeshBasicMaterial({ color })
+  );
+  if (axis === "x") torus.rotation.y = Math.PI / 2;
+  if (axis === "y") torus.rotation.x = Math.PI / 2;
+  marker.add(torus);
+  const label = labelSprite(text, color);
+  label.position.set(0, 0.24, 0);
+  marker.add(label);
+  parent.add(marker);
+}
+
+function labelSprite(text, color) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 420;
+  canvas.height = 96;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "rgba(12, 11, 9, 0.82)";
+  roundRect(ctx, 8, 14, 404, 58, 18);
+  ctx.fill();
+  ctx.strokeStyle = `#${color.toString(16).padStart(6, "0")}`;
+  ctx.lineWidth = 4;
+  ctx.stroke();
+  ctx.fillStyle = "#f6eddd";
+  ctx.font = "bold 30px Georgia";
+  ctx.fillText(text, 28, 52);
+  const texture = new THREE.CanvasTexture(canvas);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
+  sprite.scale.set(0.78, 0.18, 1);
+  return sprite;
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }
 
 function resize() {
@@ -138,9 +236,15 @@ function animate() {
   resize();
   joints = joints.map((v, i) => v + (targetJoints[i] - v) * 0.18);
   applyJoints(joints);
-  lamp.spot.intensity += (lightTarget.intensity * 2.2 - lamp.spot.intensity) * 0.18;
+  updateDofReadout(joints);
+  lamp.spot.intensity += (lightTarget.intensity * 4.8 - lamp.spot.intensity) * 0.18;
   lamp.spot.color.set(lightTarget.color);
   lamp.bulb.material.emissive.set(lightTarget.color);
+  lamp.bulb.material.emissiveIntensity = 1.2 + lightTarget.intensity * 3.4;
+  lamp.halo.material.color.set(lightTarget.color);
+  lamp.halo.material.opacity = 0.08 + lightTarget.intensity * 0.28;
+  lamp.beam.material.color.set(lightTarget.color);
+  lamp.beam.material.opacity = 0.04 + lightTarget.intensity * 0.22;
   renderer.render(scene, camera);
 }
 
@@ -155,6 +259,13 @@ function applyJoints(j) {
 
 function deg(v) {
   return (v * Math.PI) / 180;
+}
+
+function updateDofReadout(values) {
+  els.dofValues.forEach((el) => {
+    const index = Number(el.dataset.joint);
+    el.textContent = `${values[index].toFixed(0)}°`;
+  });
 }
 
 ws.addEventListener("open", () => log("WebSocket connected"));
