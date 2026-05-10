@@ -154,7 +154,7 @@ function buildLamp() {
   const spot = new THREE.SpotLight(0xffd28a, 4.2, 8, Math.PI / 6, 0.45, 1.0);
   spot.position.set(0, 0, 0.62);
   const target = new THREE.Object3D();
-  target.position.set(0, -2.4, 3.6);
+  target.position.set(0, 0, 3.8);
   headRoll.add(spot);
   headRoll.add(target);
   spot.target = target;

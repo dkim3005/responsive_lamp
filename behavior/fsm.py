@@ -11,7 +11,8 @@ from config import (
 from behavior.motions import add_joints, base_scan, head_wiggle
 
 
-BASE_JOINTS = [0.0, -30.0, 60.0, 20.0, 0.0, 0.0]
+BASE_JOINTS = [0.0, -30.0, 60.0, 0.0, -30.0, 0.0]
+HEAD_PITCH_NEUTRAL_DEG = -30.0
 
 
 @dataclass
@@ -134,14 +135,14 @@ class LampFSM:
                 joints = _track_face_joints(joints, face_xy, engaged=False)
             light = {"intensity": 0.72, "color": "#8fb7ff"}
         elif self.state == "DISENGAGED":
-            joints[4] = 10.0
+            joints[4] = HEAD_PITCH_NEUTRAL_DEG - 10.0
             light = {"intensity": 0.4, "color": "#b8c7ff"}
         elif self.state == "SEEKING_1":
             joints = add_joints(joints, head_wiggle(elapsed))
             light = {"intensity": 0.65, "color": "#ffe6a7"}
         elif self.state == "SEEKING_2":
             intensity = 0.7 + 0.3 * abs(__import__("math").sin(3.0 * elapsed))
-            joints[4] = 16.0
+            joints[4] = HEAD_PITCH_NEUTRAL_DEG - 4.0
             light = {"intensity": intensity, "color": "#ffcf70"}
         elif self.state == "SEEKING_3":
             joints = add_joints(joints, base_scan(elapsed))
@@ -155,7 +156,7 @@ class LampFSM:
             joints[1] = -28.0 + math.sin(7.0 * elapsed) * 14.0
             joints[2] = 58.0 + math.sin(6.0 * elapsed) * 16.0
             joints[3] = math.sin(11.0 * elapsed) * 35.0
-            joints[4] = 18.0 + math.sin(9.0 * elapsed) * 12.0
+            joints[4] = HEAD_PITCH_NEUTRAL_DEG + math.sin(9.0 * elapsed) * 12.0
             light = {"intensity": 1.0, "color": "#ffcc58"}
             sound = "chirp" if elapsed < 0.35 else None
         elif self.state == "OBJECT_FOUND":
@@ -165,12 +166,12 @@ class LampFSM:
             joints[1] = -24.0 + math.sin(10.0 * elapsed) * 5.0
             joints[2] = 54.0 + math.sin(8.0 * elapsed) * 8.0
             joints[3] = ox * 48.0
-            joints[4] = 18.0 - oy * 32.0 + math.sin(14.0 * elapsed) * 5.0
+            joints[4] = HEAD_PITCH_NEUTRAL_DEG - oy * 32.0 + math.sin(14.0 * elapsed) * 5.0
             light = {"intensity": 1.0, "color": "#8fffd2"}
             sound = "chirp" if elapsed < 0.22 else None
 
         if self.state == "IDLE":
-            joints[4] = 16.0
+            joints[4] = HEAD_PITCH_NEUTRAL_DEG
 
         return LampCommand(self.state, [round(v, 3) for v in joints], light, sound)
 
@@ -182,6 +183,6 @@ def _track_face_joints(joints: list[float], face_xy: list[float], engaged: bool)
     joints[1] = -27.0 - abs(x) * 6.0
     joints[2] = 58.0
     joints[3] = x * 60.0 * scale
-    joints[4] = 20.0 - y * 36.0
+    joints[4] = HEAD_PITCH_NEUTRAL_DEG - y * 36.0
     joints[5] = -x * 14.0 * scale
     return joints
