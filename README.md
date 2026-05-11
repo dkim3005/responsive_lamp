@@ -24,14 +24,17 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Add your OpenAI API key to `.env`:
+Add your OpenAI API key and demo password to `.env`:
 
 ```
 OPENAI_API_KEY=sk-...
+LAMP_PASSWORD=choose-a-demo-password
 ENABLE_EDGE_TTS=0
 ```
 
 `ENABLE_EDGE_TTS=0` is the safer demo default because Microsoft's Edge-TTS endpoint can return 403. The browser still speaks replies with the Web Speech API fallback.
+
+`face_landmarker.task` must be present in the project root. The engagement detector uses MediaPipe Tasks FaceLandmarker rather than the deprecated `mp.solutions.face_mesh` API.
 
 Start the server:
 
@@ -39,13 +42,13 @@ Start the server:
 uvicorn server:app --host 0.0.0.0 --port 8000
 ```
 
-Open `http://localhost:8000` in Chrome on the same machine and click **Start Camera**.
+Open `http://localhost:8000` in Chrome on the same machine and click **Start Camera**. Camera tracking starts immediately; voice and text LLM queries unlock after entering `LAMP_PASSWORD` in the panel.
 
 ---
 
 ## Usage
 
-The interface has two inputs: push-to-talk (hold the button or hold Space) and a text field. Both feed into the same conversation pipeline — STT transcription for voice, direct text otherwise.
+The interface has two authenticated LLM inputs: push-to-talk (hold the button or hold Space) and a text field. Both feed into the same conversation pipeline — STT transcription for voice, direct text otherwise.
 
 Example queries the lamp can answer:
 - *"Where is my cup?"*
@@ -53,6 +56,8 @@ Example queries the lamp can answer:
 - *"What did you notice a moment ago?"*
 
 The lamp stores everything it detects across the session. Objects seen more recently rank higher in retrieval.
+
+For engagement tuning, `GET /debug/engagement` returns the latest detector sample, including gaze values, face position, detection method, and any fallback error.
 
 ---
 
@@ -98,12 +103,14 @@ In the recorded validation run, the system sampled 619 engagement predictions an
 
 **Object detection accuracy.** The system uses YOLOv8n, the smallest model in the YOLOv8 family. It is fast enough to run at 1 Hz on a mid-range CPU, but it is noticeably weaker on partially occluded objects, items at the edges of the frame, and anything outside the 80 COCO classes. A cup behind a laptop, a wallet, or a set of keys will often go undetected. Setting `YOLO_MODEL=yolov8s.pt` improves recall at the cost of roughly 3× inference time.
 
+**CPU-only YOLO.** Object detection is forced onto CPU because older GPUs such as the MX150 are incompatible with current CUDA builds that require newer compute capabilities. This avoids startup failures but limits detection throughput.
+
 **Camera coordinate calibration.** Face tracking and object-pointing use separate coordinate transforms because the mirrored preview and the 3D lamp joint model can need different vertical directions. If object-pointing looks vertically inverted on another machine, set `CAMERA_OBJECT_CONTROL_FLIP_Y=1`.
 
 **No physical hardware.** Joint angles, light colour, and sound commands are sent to a Three.js renderer rather than actual servos. The command schema is hardware-agnostic — adding a servo driver layer is the only integration work needed.
 
 **Single-user only.** The engagement model assumes one face in frame. A second person entering the scene will confuse the iris gaze calculation, and the FSM has no concept of speaker identity.
 
-**Lighting sensitivity.** MediaPipe iris detection degrades under low light or strong backlight. In these conditions the system falls back to a Haar cascade face detector, which can only report face position and cannot confirm eye contact.
+**Lighting sensitivity.** MediaPipe Tasks iris detection degrades under low light or strong backlight. In these conditions the system falls back to a Haar cascade face detector, which can only report face position and cannot confirm eye contact.
 
 **TTS latency.** Edge-TTS depends on Microsoft's speech endpoint. Responses typically arrive within one to two seconds, but cold starts and network latency can push this higher. The browser Web Speech API is used as a fallback if the request times out.
