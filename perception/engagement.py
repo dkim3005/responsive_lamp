@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import os
 import time
+from pathlib import Path
 
 import numpy as np
 
@@ -13,13 +14,19 @@ os.environ.setdefault("YOLO_CONFIG_DIR", "/tmp/Ultralytics")
 
 try:
     import cv2
-    import mediapipe as mp
-    import absl.logging
-    absl.logging.set_verbosity(absl.logging.ERROR)
-except Exception:  # pragma: no cover - optional runtime dependency
+except Exception:
     cv2 = None
-    mp = None
 
+try:
+    import mediapipe as mp
+    from mediapipe.tasks import python as _mp_python
+    from mediapipe.tasks.python import vision as _mp_vision
+    _TASKS_AVAILABLE = True
+except Exception:
+    mp = None
+    _TASKS_AVAILABLE = False
+
+_MODEL_PATH = str(Path(__file__).parent.parent / "face_landmarker.task")
 
 FACE_MODEL_POINTS = np.array(
     [
@@ -34,12 +41,11 @@ FACE_MODEL_POINTS = np.array(
 )
 LANDMARK_IDS = [1, 152, 33, 263, 61, 291]
 
-# Eye corner/lid landmarks for iris gaze computation
 _L_OUTER, _L_INNER, _L_TOP, _L_BOT, _L_IRIS = 33, 133, 159, 145, 468
 _R_OUTER, _R_INNER, _R_TOP, _R_BOT, _R_IRIS = 263, 362, 386, 374, 473
 
 
-def _iris_deviation(landmarks, iris_id: int, inner_id: int, outer_id: int, top_id: int, bot_id: int) -> tuple[float, float]:
+def _iris_deviation(landmarks, iris_id, inner_id, outer_id, top_id, bot_id):
     """Return (horizontal, vertical) iris deviation from eye center, each in [-1, 1]."""
     iris = landmarks[iris_id]
     lx = min(landmarks[inner_id].x, landmarks[outer_id].x)
@@ -57,27 +63,33 @@ def _iris_deviation(landmarks, iris_id: int, inner_id: int, outer_id: int, top_i
 
 class EngagementDetector:
     def __init__(self) -> None:
-        self.available = cv2 is not None and mp is not None
-        self.cv_available = cv2 is not None
+        self.available = cv2 is not None and _TASKS_AVAILABLE
         self._last_t = time.perf_counter()
+        self._start_t = time.perf_counter()
         self.fps = 0.0
-        self.mesh = None
+        self._landmarker = None
         self.face_cascade = None
         self.error: str | None = None
 
-    def _ensure_mesh(self) -> bool:
+    def _ensure_landmarker(self) -> bool:
         if not self.available:
-            self.error = "MediaPipe/OpenCV not installed"
+            self.error = "MediaPipe Tasks or OpenCV not available"
             return False
-        if self.mesh is not None:
+        if self._landmarker is not None:
             return True
         try:
-            self.mesh = mp.solutions.face_mesh.FaceMesh(
-                refine_landmarks=True,
-                max_num_faces=1,
-                min_detection_confidence=0.5,
-                min_tracking_confidence=0.5,
+            base_options = _mp_python.BaseOptions(model_asset_path=_MODEL_PATH)
+            options = _mp_vision.FaceLandmarkerOptions(
+                base_options=base_options,
+                running_mode=_mp_vision.RunningMode.VIDEO,
+                num_faces=1,
+                min_face_detection_confidence=0.4,
+                min_face_presence_confidence=0.4,
+                min_tracking_confidence=0.4,
+                output_face_blendshapes=False,
+                output_facial_transformation_matrixes=False,
             )
+            self._landmarker = _mp_vision.FaceLandmarker.create_from_options(options)
             return True
         except Exception as exc:
             self.error = f"{type(exc).__name__}: {exc}"
@@ -85,23 +97,33 @@ class EngagementDetector:
 
     def process(self, bgr: np.ndarray) -> dict:
         self._update_fps()
-        if not self._ensure_mesh():
+        if not self._ensure_landmarker():
             return self._process_haar(bgr, self.error)
 
         h, w = bgr.shape[:2]
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-        rgb.flags.writeable = False
-        results = self.mesh.process(rgb)
-        rgb.flags.writeable = True
-        if not results.multi_face_landmarks:
+        try:
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+            timestamp_ms = int((time.perf_counter() - self._start_t) * 1000)
+            result = self._landmarker.detect_for_video(mp_image, timestamp_ms)
+        except Exception as exc:
+            return self._process_haar(bgr, str(exc))
+
+        if not result.face_landmarks:
             return self._process_haar(bgr)
 
-        landmarks = results.multi_face_landmarks[0].landmark
+        landmarks = result.face_landmarks[0]
 
-        # Head pose (for display only)
-        image_points = np.array([(landmarks[i].x * w, landmarks[i].y * h) for i in LANDMARK_IDS], dtype=np.float64)
+        # Head pose via solvePnP
+        image_points = np.array(
+            [(landmarks[i].x * w, landmarks[i].y * h) for i in LANDMARK_IDS],
+            dtype=np.float64,
+        )
         focal_length = w
-        camera_matrix = np.array([[focal_length, 0, w / 2], [0, focal_length, h / 2], [0, 0, 1]], dtype=np.float64)
+        camera_matrix = np.array(
+            [[focal_length, 0, w / 2], [0, focal_length, h / 2], [0, 0, 1]],
+            dtype=np.float64,
+        )
         dist_coeffs = np.zeros((4, 1))
         ok, rvec, _ = cv2.solvePnP(
             FACE_MODEL_POINTS, image_points, camera_matrix, dist_coeffs,
@@ -125,8 +147,8 @@ class EngagementDetector:
         avg_v = (abs(lv) + abs(rv)) / 2.0
         engaged_raw = avg_h < GAZE_H_THRESHOLD and avg_v < GAZE_V_THRESHOLD
 
-        xs = [p.x for p in landmarks]
-        ys = [p.y for p in landmarks]
+        xs = [lm.x for lm in landmarks]
+        ys = [lm.y for lm in landmarks]
         return {
             "detected": True,
             "yaw_deg": yaw,
@@ -142,8 +164,8 @@ class EngagementDetector:
         }
 
     def close(self) -> None:
-        if self.mesh is not None:
-            self.mesh.close()
+        if self._landmarker is not None:
+            self._landmarker.close()
 
     def _empty(self, error: str | None = None) -> dict:
         return {
@@ -172,9 +194,13 @@ class EngagementDetector:
         if cv2 is None:
             return self._empty(error or "OpenCV not installed")
         if self.face_cascade is None:
-            self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+            self.face_cascade = cv2.CascadeClassifier(
+                cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+            )
         gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
-        faces = self.face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(70, 70))
+        faces = self.face_cascade.detectMultiScale(
+            gray, scaleFactor=1.1, minNeighbors=5, minSize=(70, 70)
+        )
         if len(faces) == 0:
             return self._empty(error)
         h, w = bgr.shape[:2]

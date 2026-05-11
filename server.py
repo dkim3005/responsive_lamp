@@ -39,9 +39,9 @@ except Exception:  # pragma: no cover - optional runtime dependency
     cv2 = None
 
 try:
-    from pydub import AudioSegment
+    import av as _av
 except Exception:  # pragma: no cover - optional runtime dependency
-    AudioSegment = None
+    _av = None
 
 
 FRAME_MAGIC = b"\x01FRM"
@@ -49,6 +49,8 @@ AUDIO_MAGIC = b"\x02AUD"
 
 app = FastAPI(title="LeLamp")
 app.mount("/static", StaticFiles(directory="lamp/web"), name="static")
+
+_PASSWORD = os.getenv("LAMP_PASSWORD", "dojkim25")
 
 store = MemoryStore(DB_PATH)
 engagement = EngagementDetector()
@@ -60,6 +62,7 @@ server_start_t = time.time()
 
 frame_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=2)
 connections: set[WebSocket] = set()
+authed_connections: set[WebSocket] = set()
 last_engaged_raw = False
 last_face_xy: list[float] | None = None
 smoothed_face_xy: list[float] | None = None
@@ -106,6 +109,12 @@ async def index() -> FileResponse:
     return FileResponse("lamp/web/index.html")
 
 
+@app.get("/debug/engagement")
+async def debug_engagement():
+    from fastapi.responses import JSONResponse
+    return JSONResponse(latest_engagement_eval)
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket) -> None:
     ensure_frame_processor()
@@ -131,6 +140,7 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         pass
     finally:
         connections.discard(ws)
+        authed_connections.discard(ws)
         behavior_task.cancel()
 
 
@@ -146,6 +156,22 @@ async def handle_text(raw: str, ws: WebSocket) -> None:
         data = json.loads(raw)
     except json.JSONDecodeError:
         await send_json(ws, {"type": "log", "level": "error", "msg": "Invalid JSON"})
+        return
+
+    if data.get("type") == "auth":
+        if data.get("password") == _PASSWORD:
+            authed_connections.add(ws)
+            await send_json(ws, {"type": "auth_ok"})
+        else:
+            await send_json(ws, {"type": "auth_fail"})
+        return
+
+    if data.get("type") == "ping":
+        await send_json(ws, {"type": "pong", "ts": time.time()})
+        return
+
+    if ws not in authed_connections:
+        await send_json(ws, {"type": "auth_required"})
         return
 
     if data.get("type") == "text_input":
@@ -189,8 +215,6 @@ async def handle_text(raw: str, ws: WebSocket) -> None:
         action = store.upsert_observation(label, bbox, zone, 1.0, time.time())
         fsm.trigger_object_found(time.time() - server_start_t, bbox_for_action(bbox))
         await broadcast({"type": "memory_event", "label": label, "bbox": bbox, "zone": zone, "action": action, "conf": 1.0})
-    elif data.get("type") == "ping":
-        await send_json(ws, {"type": "pong", "ts": time.time()})
 
 
 async def handle_binary(data: bytes, ws: WebSocket) -> None:
@@ -202,6 +226,9 @@ async def handle_binary(data: bytes, ws: WebSocket) -> None:
                 pass
         await frame_queue.put(data[4:])
     elif data.startswith(AUDIO_MAGIC):
+        if ws not in authed_connections:
+            await send_json(ws, {"type": "auth_required"})
+            return
         asyncio.create_task(handle_voice_audio(data[4:], ws))
 
 
@@ -376,15 +403,28 @@ async def finish_reply(text: str, ws: WebSocket, t0: float) -> None:
 
 
 def webm_to_wav16k(audio_bytes: bytes) -> bytes:
-    if AudioSegment is None:
+    if _av is None:
         return b""
-    with tempfile.NamedTemporaryFile(suffix=".webm") as src, tempfile.NamedTemporaryFile(suffix=".wav") as dst:
-        src.write(audio_bytes)
-        src.flush()
-        audio = AudioSegment.from_file(src.name)
-        audio = audio.set_frame_rate(16000).set_channels(1).set_sample_width(2)
-        audio.export(dst.name, format="wav")
-        return Path(dst.name).read_bytes()
+    import io, struct
+    in_buf = io.BytesIO(audio_bytes)
+    out_buf = io.BytesIO()
+    try:
+        in_container = _av.open(in_buf, format="webm")
+        out_container = _av.open(out_buf, mode="w", format="wav")
+        out_stream = out_container.add_stream("pcm_s16le", rate=16000, layout="mono")
+        resampler = _av.AudioResampler(format="s16", layout="mono", rate=16000)
+        for frame in in_container.decode(audio=0):
+            for rf in resampler.resample(frame):
+                rf.pts = None
+                for pkt in out_stream.encode(rf):
+                    out_container.mux(pkt)
+        for pkt in out_stream.encode(None):
+            out_container.mux(pkt)
+        out_container.close()
+        in_container.close()
+        return out_buf.getvalue()
+    except Exception:
+        return b""
 
 
 async def tts_announce(text: str) -> None:

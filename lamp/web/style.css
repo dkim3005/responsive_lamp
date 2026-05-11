@@ -140,7 +140,7 @@ button, input { font: inherit; }
   display: flex;
   flex-direction: column;
   gap: 0;
-  overflow: hidden;
+  overflow-y: auto;
   background: var(--panel);
   border-left: 1px solid var(--border);
 }
@@ -405,3 +405,44 @@ button, input { font: inherit; }
   .shell { grid-template-columns: 1fr; grid-template-rows: 55vh 1fr; }
   .panel { border-left: none; border-top: 1px solid var(--border); }
 }
+
+/* LLM auth lock */
+#llm-lock-msg {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.6;
+  margin-bottom: 6px;
+}
+#llm-lock-msg a {
+  color: var(--amber);
+  text-decoration: none;
+}
+#llm-lock-msg a:hover { text-decoration: underline; }
+#llm-lock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0;
+}
+#llm-lock #auth-form {
+  display: flex;
+  gap: 6px;
+}
+#auth-input {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--ink);
+  font-size: 13px;
+  padding: 8px 10px;
+  outline: none;
+}
+#auth-input:focus { border-color: var(--amber); }
+#auth-error {
+  color: #e05c5c;
+  font-size: 11px;
+  min-height: 14px;
+  padding-left: 2px;
+}
+.hidden { display: none !important; }

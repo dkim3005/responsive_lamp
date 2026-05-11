@@ -35,7 +35,7 @@ class SceneDetector:
             return []
 
         h, w = bgr.shape[:2]
-        results = self.model.predict(bgr, imgsz=YOLO_IMAGE_SIZE, verbose=False)
+        results = self.model.predict(bgr, imgsz=YOLO_IMAGE_SIZE, verbose=False, device="cpu")
         detections: list[dict] = []
         self.last_raw_count = len(results[0].boxes)
         for box in results[0].boxes:
@@ -72,6 +72,7 @@ class SceneDetector:
             return True
         try:
             self.model = YOLO(YOLO_MODEL)
+            self.model.to("cpu")
             self.names = self.model.names
             return True
         except Exception as exc:

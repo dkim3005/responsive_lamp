@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>LeLamp</title>
-    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="/static/style.css?v=8" />
     <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.171.0/build/three.module.js"}}</script>
   </head>
   <body>
@@ -62,27 +62,41 @@
           <div id="detections" class="detections"></div>
         </div>
 
-        <!-- Talk controls -->
-        <div class="talk-section">
-          <button id="ptt" class="ptt-btn">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/>
-            </svg>
-            Hold to Talk
-          </button>
-          <form id="text-form" class="ask-form">
-            <input id="text-input" placeholder="Ask the lamp…" autocomplete="off" />
-            <button type="submit" class="send-btn">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-              </svg>
-            </button>
-          </form>
+        <!-- Talk controls + Chat (auth-gated) -->
+        <div id="llm-section" class="llm-section">
+          <div id="llm-lock">
+            <p id="llm-lock-msg">To enable LLM query (voice &amp; chat), enter the password.<br><span>Contact admin: <a href="mailto:djkim3005@gmail.com">djkim3005@gmail.com</a></span></p>
+            <form id="auth-form">
+              <input id="auth-input" type="password" placeholder="Enter password…" autocomplete="current-password" />
+              <button type="submit" class="send-btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                </svg>
+              </button>
+            </form>
+            <div id="auth-error"></div>
+          </div>
+          <div id="llm-content" hidden>
+            <div class="talk-section">
+              <button id="ptt" class="ptt-btn">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/>
+                </svg>
+                Hold to Talk
+              </button>
+              <form id="text-form" class="ask-form">
+                <input id="text-input" placeholder="Ask the lamp…" autocomplete="off" />
+                <button type="submit" class="send-btn">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                  </svg>
+                </button>
+              </form>
+            </div>
+            <div id="chat" class="chat"></div>
+          </div>
         </div>
-
-        <!-- Conversation -->
-        <div id="chat" class="chat"></div>
 
         <!-- Debug log -->
         <div id="log" class="log"></div>
@@ -92,6 +106,7 @@
     <canvas id="capture" width="640" height="480" hidden></canvas>
     <audio id="reply-audio"></audio>
     <div id="toast" class="toast"></div>
-    <script type="module" src="/static/lamp.js"></script>
+
+    <script type="module" src="/static/lamp.js?v=8"></script>
   </body>
 </html>

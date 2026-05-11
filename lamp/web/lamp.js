@@ -28,7 +28,38 @@ ws.binaryType = "arraybuffer";
 let cameraTimer = null;
 let recorder = null;
 let audioChunks = [];
+let authed = false;
 let joints = [0, -30, 60, 0, -25, 0];
+
+const authForm = document.querySelector("#auth-form");
+const authInput = document.querySelector("#auth-input");
+const authError = document.querySelector("#auth-error");
+const llmLock = document.querySelector("#llm-lock");
+const llmContent = document.querySelector("#llm-content");
+
+function applyAuthUI() {
+  if (authed) {
+    llmLock.hidden = true;
+    llmContent.hidden = false;
+  } else {
+    llmLock.hidden = false;
+    llmContent.hidden = true;
+    authInput.focus();
+  }
+}
+applyAuthUI();
+
+authForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const pw = authInput.value.trim();
+  if (!pw) return;
+  const msg = JSON.stringify({ type: "auth", password: pw });
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(msg);
+  } else {
+    ws.addEventListener("open", () => ws.send(msg), { once: true });
+  }
+});
 let targetJoints = joints.slice();
 let lightTarget = { intensity: 0.5, color: "#ffffff" };
 let lastDetections = [];
@@ -312,6 +343,16 @@ ws.addEventListener("message", (event) => {
       speak(msg.text);
     }
     if (msg.text) toast(msg.text);
+  } else if (msg.type === "auth_ok") {
+    authed = true;
+    applyAuthUI();
+  } else if (msg.type === "auth_fail") {
+    authError.textContent = "Wrong password";
+    authInput.value = "";
+    authInput.focus();
+  } else if (msg.type === "auth_required") {
+    authed = false;
+    applyAuthUI();
   } else if (msg.type === "engagement_label_saved") {
     const truth = msg.truth ? "looking" : "away";
     const predicted = msg.predicted ? "looking" : "away";
